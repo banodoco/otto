@@ -632,3 +632,17 @@ These messages are approved for the cases OT-7 met that sections 11 and 13 do no
 | Pack kind matching a file not named plan.md | `record kind <kind> sets pack = true but its pattern matched '<file>', which is not named plan.md` |
 | Empty role or name field | `<field> must be a nonempty string` |
 | Relationships table | `invalid Relationships table: <suffix>`, with the suffixes `duplicate Relationships section`, `expected Relation | Target | Role header`, `invalid separator row`, `expected exactly three cells`, `blank cell`, `non-table content` and `invalid typed target reference` |
+
+## 15. Approved wording for relation refusals section 11 does not list (OT-8)
+
+| Case | Message |
+| --- | --- |
+| Repeated source kind in a relation declaration | `relation <name> repeats source kind <repr(kind)>` |
+| Repeated target kind in a relation declaration | `relation <name> repeats target kind <repr(kind)>` |
+| Invalid relationship source line | `<relation>: invalid source line <repr(line)>` |
+| Endpoint mismatch for a relation with several source or target kinds | `<relation> requires <sorted source kinds joined " or "> -> <sorted target kinds joined " or ">, got <actual-source> -> <actual-target>` |
+| Outgoing degree outside the declared cardinality | `<ref> has <n> [<role> ]<relation> targets; expected <token>` |
+| Incoming degree outside the declared cardinality | `<ref> has <n> [<role> ]incoming <relation> sources; expected <token>` |
+| Enablers passed without a schema rule | `enablers require an explicit schema rule` |
+
+Plan 72's own messages (duplicate record identity, unknown record kind, invalid identity, unknown relationship kind, endpoint and role errors, the one-primary rule and the enabler prohibition) keep their wording; authored cases add a separate `path:line` prefix.
