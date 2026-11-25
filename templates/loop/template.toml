@@ -1,0 +1,9 @@
+version = 1
+name = "loop"
+workstream = "guidance/workstreams/iterate.md#live-loops"
+
+[[documents]]
+path = "rounds.md"
+source = "rounds.md"
+headings = ["Baseline", "Method", "Stop rule", "Rounds"]
+task_reference_field = "Standing task"
