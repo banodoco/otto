@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "banodoco-otto"
+dynamic = ["version"]
+description = "An importable framework for Markdown-first organisations"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {file = "LICENSE"}
+dependencies = []
+
+[project.scripts]
+otto = "otto.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["otto", "otto.*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "otto.__version__"}
