@@ -95,7 +95,9 @@ def identity_from_path(kind: str, policy: IdPolicy, path: str, *, line: int = 1)
     elif policy.source == "stem":
         component = source.stem
     else:
-        raise LocatedError(location, f"ID source {policy.source!r} is incompatible with reader 'headers'")
+        # This function accepts locator policies only. Adapter IDs are
+        # supplied directly and use validate_identity instead.
+        raise ValueError("identity_from_path requires a parent or stem policy")
     pattern = policy.pattern if policy.policy == "regex" else _COMPONENT_PATTERNS[policy.policy]
     match = re.fullmatch(pattern, component)
     if not match or not _lexical_identity(component):
