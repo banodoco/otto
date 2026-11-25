@@ -104,7 +104,7 @@ class LinkAnchorTests(unittest.TestCase):
         files = {
             "agent/roles/manager.md": "# Manager\n\n## Steps\n",
             "agent/start.md": "[steps](roles/manager.md#steps)\n",
-            ".generated/skills/astrid-dev-manager/SKILL.md":
+            ".generated/skills/example-manager/SKILL.md":
                 "[stale](../../../agent/roles/manager.md#missing)\n",
         }
         self.assertEqual(self.run_rule(files), [])

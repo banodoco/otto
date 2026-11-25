@@ -7,8 +7,8 @@ from otto.markdown import (frontmatter, headings, markdown_heading_anchors,
 
 class DocumentStructureTests(unittest.TestCase):
     def test_frontmatter_parses_single_line_fields(self):
-        data, body = frontmatter("---\nname: astrid-dev-demo\ndescription: Do one thing.\n---\n\n# Demo\n")
-        self.assertEqual(data, {"name": "astrid-dev-demo", "description": "Do one thing."})
+        data, body = frontmatter("---\nname: example-demo\ndescription: Do one thing.\n---\n\n# Demo\n")
+        self.assertEqual(data, {"name": "example-demo", "description": "Do one thing."})
         self.assertTrue(body.startswith("\n# Demo"))
         for invalid, pattern in (
             ("# No frontmatter\n", "missing frontmatter"),
