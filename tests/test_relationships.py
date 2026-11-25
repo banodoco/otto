@@ -517,5 +517,32 @@ class GenericGraphTests(LocatedAssertions):
                     "notes/one.md", 2, "unknown record kind: 'unknown'")
 
 
+    def test_schema_ref_invalid_identity_retains_located_legacy_message(self):
+        schema = generic_schema()
+        self.refuse(lambda: schema.ref("note", " not valid ",
+                                       source=SourceLocation("notes/one.md", 2)),
+                    "notes/one.md", 2, "invalid note identity: ' not valid '")
+        self.refuse(lambda: schema.ref("unknown", "one",
+                                       source=SourceLocation("notes/one.md", 2)),
+                    "notes/one.md", 2, "unknown record kind: 'unknown'")
+
+    def test_stage_target_kind_on_synthetic_marketing_declaration(self):
+        # The other public contract specimen has different kinds and roles;
+        # it must bind independently of the Dev fixture in this same process.
+        path = DEV.parent.parent / "marketing" / "otto.toml"
+        declaration, source_map = read_declaration(path, display_path="otto.toml")
+        schema = RelationshipSchema.from_declarations(
+            (kind["name"] for kind in declaration["record_kinds"]),
+            declaration["relation_kinds"], source_map)
+        campaign = schema.ref("campaign", "sample-week")
+        goal = schema.ref("goal", "example")
+        self.refuse(lambda: Relationship(campaign, "includes", goal, "included",
+                                        "campaigns/sample-week.md", 6, schema=schema),
+                    "campaigns/sample-week.md", 6,
+                    "includes requires campaign -> project, got campaign -> goal")
+        self.assertEqual(schema.ref("idea", "example"), RecordRef("idea", "example"))
+        self.assertEqual(SCHEMA.ref("gap", A.id), A)
+
+
 if __name__ == "__main__":
     unittest.main()
