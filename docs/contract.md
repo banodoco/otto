@@ -669,3 +669,26 @@ These messages are approved for the cases OT-11 met. Where a generic field-speci
 | Inventory | `template root must name a directory` / `template root must resolve inside <root>` |
 | Actual pack escape | `template <name>: <field> must resolve inside <root>` (actual document path, pack root) |
 | History failure | `cannot compare template selection: <reason>` |
+
+## 17. Approved wording for pipeline refusals section 11 does not list (OT-9)
+
+| Condition | Message body |
+| --- | --- |
+| Invalid pipeline ID | `invalid pipeline id '<value>'; expected lowercase kebab-case` |
+| Invalid stage ID | `invalid stage id '<value>'; expected lowercase kebab-case` |
+| Unknown link role | `pipeline <id> link <relation> has cardinality for unknown role '<role>'` |
+| Unknown pipeline query | `unknown pipeline '<id>'` |
+| Pipeline inventory root type/containment | `paths.pipelines must name a directory` / `paths.pipelines must resolve inside the workspace root` |
+| Child type/containment | `pipeline declaration must name a file` / `pipeline declaration must resolve inside the workspace root` |
+| Root unknown/missing key | `unknown key '<key>' in pipeline` / `missing required key '<key>' in pipeline` |
+| Nested unknown/missing keys | `unknown key '<key>' in <table>` / `missing required key '<key>' in <table>` (stages, links, links.by_role.<role>) |
+| Field type/empty list/duplicates | Existing generic field-specific messages; dotted labels without occurrence indices. In particular `stages.kinds must be nonempty` / `stages.kinds contains duplicate '<kind>'` |
+| Version type / token | Existing `version must be an integer` / `unsupported declaration version <n>; expected 1` |
+| Unknown cardinality | Existing `unknown cardinality '<token>'` |
+| Filesystem read failure | Existing `cannot read <path>: <operating-system message>` |
+| Topology including nonadjacent/self link | Existing `pipeline <id> requires exactly one link between adjacent stages <a> and <b>`; actual display-ordered endpoint names for nonadjacent/self links |
+| Impossible effective role/total intervals | Existing `pipeline <id> has incompatible bounds for <relation> at <end>` |
+
+All other specific messages in section 11 retained. Every new message above was approved or is a reuse of an existing contract message, as specified by the decision.
+
+Adjacent edits: none. No private data or secrets. No clone/build/tests/CI dispatch, merge or tasks.md edits. Proof selector: tests; orchestrator executes it.
