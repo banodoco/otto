@@ -131,9 +131,9 @@ class RecordsTests(unittest.TestCase):
         self.assertEqual(record.template_location, SourceLocation(record_path, 5))
         self.assertEqual(batch.relationships, (
             RelationshipRow(record.ref, "serves", RecordRef("goal", "pillar:theme/aim"),
-                            "primary", record_path, 17),
+                            "primary", record_path, 18),
             RelationshipRow(record.ref, "other-relation", RecordRef("arbitrary", "unknown"),
-                            "unknown-role", record_path, 18),
+                            "unknown-role", record_path, 19),
         ))
         # OT-7 reads authored rows even when graph semantics later reject them.
         self.assertEqual(load_records(workspace), batch)
