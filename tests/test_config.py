@@ -6,6 +6,7 @@ import shutil
 import tempfile
 import tomllib
 import unittest
+from unittest.mock import patch
 
 from otto.config import load_workspace, read_declaration
 from otto.ids import LocatedError
@@ -324,6 +325,7 @@ source = "stem"
             ('name = "project"', 'name = ""', "record_kinds.name must be a nonempty string"),
             ('reader = "headers"', 'reader = "unknown"', "unknown reader 'unknown'; expected headers, frontmatter or adapter"),
             ('files = ["*/plan.md"]', 'files = []', "record kind project requires at least one source pattern"),
+            ('files = ["*/plan.md"]', 'files = [""]', "invalid source pattern '': empty path"),
             ('files = ["*/plan.md"]', 'files = ["../outside"]', "invalid source pattern '../outside': parent components are not allowed"),
             ('files = ["*/plan.md"]', 'files = ["x**.md"]', "invalid source pattern 'x**.md': '**' must be a complete path component"),
         ]
@@ -443,6 +445,24 @@ source = "stem"
         self.adapter("raise RuntimeError('example failure')\n")
         self.refuse(text, self.at(text, "module ="), "cannot load adapter reader.py: example failure")
 
+    def test_unreadable_config_and_inventory(self):
+        self.config.write_text(MINIMAL, encoding="utf-8")
+        with patch.object(Path, "read_text", side_effect=PermissionError(13, os.strerror(13))):
+            with self.assertRaises(LocatedError) as raised:
+                load_workspace(self.root)
+        self.assertEqual(str(raised.exception), f"otto.toml:1: cannot read otto.toml: {os.strerror(13)}")
+        text = MINIMAL + RECORDS
+        self.config.write_text(text, encoding="utf-8")
+        real_scandir = os.scandir
+        def deny_items(path):
+            if Path(path) == self.root / "items":
+                raise PermissionError(13, os.strerror(13))
+            return real_scandir(path)
+        with patch("otto.config.os.scandir", side_effect=deny_items):
+            with self.assertRaises(LocatedError) as raised:
+                load_workspace(self.root)
+        self.assertEqual(str(raised.exception), f"otto.toml:{self.at(text, 'items =')}: cannot read items: {os.strerror(13)}")
+
     def test_relation_shape_is_closed_but_semantics_are_deferred(self):
         text = MINIMAL + RECORDS + RELATIONS
         bad = text.replace('roles = ["primary"]', 'roles = [""]')
@@ -465,8 +485,11 @@ source = "stem"
                 root = Path(folder).resolve()
                 shutil.copyfile(original, root / "otto.toml")
                 # Bare specimens lack real source roots and modules.
-                with self.assertRaises(LocatedError):
+                with self.assertRaises(LocatedError) as raised:
                     load_workspace(root)
+                projects_line = self.at(raw.decode(), 'projects =')
+                self.assertEqual(str(raised.exception),
+                                 f"otto.toml:{projects_line}: paths.projects must name a directory")
                 paths = data["paths"]
                 for kind in data["record_kinds"]:
                     (root / paths[kind["root"]]).mkdir(parents=True, exist_ok=True)
