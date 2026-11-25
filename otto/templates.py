@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+import errno
 from fnmatch import fnmatchcase
 import os
 from pathlib import Path, PurePosixPath
@@ -186,10 +187,13 @@ def load_manifest(path: Path, owner_root: Path, template_root: Path, *,
         path = owner_root / path
     if not template_root.is_absolute():
         template_root = owner_root / template_root
-    location = SourceLocation(_display(owner_root, path), 1)
+    location = SourceLocation(_display(owner_root, path) if path.is_relative_to(owner_root)
+                              else "templates", 1)
     root_message = f"template root must resolve inside {owner_label}"
     _contained(owner_root, template_root, location, root_message)
     _contained(owner_root, path, location, root_message)
+    if not path.is_relative_to(template_root):
+        _error(location, root_message)
     _contained(template_root.resolve(), template_root.resolve() / path.relative_to(template_root),
                location, root_message)
     if len(path.relative_to(template_root).parts) != 2 or path.name != "template.toml":
@@ -289,18 +293,24 @@ def _manifest_paths(owner: Path, root: Path, label: str, location: SourceLocatio
             _read_failure(SourceLocation(_display(owner, directory), 1), exc)
         for path in entries:
             where = SourceLocation(_display(owner, path), 1)
-            _contained(owner, path, where, message)
-            _contained(root.resolve(), root.resolve() / path.relative_to(root), where, message)
-            mode = _mode(path, where)
             if path.name == "template.toml":
+                _contained(owner, path, where, message)
+                _contained(root.resolve(), root.resolve() / path.relative_to(root), where, message)
                 if len(path.relative_to(root).parts) != 2:
                     _error(where, "template manifests must be one level below the template root")
+                mode = _mode(path, where)
                 if mode is not None and not stat.S_ISREG(mode):
-                    _error(where, "template root must name a directory" if stat.S_ISDIR(mode)
-                           else f"cannot read {where.path}: not a regular file")
+                    code = errno.EISDIR if stat.S_ISDIR(mode) else errno.EINVAL
+                    _read_failure(where, OSError(code, os.strerror(code)))
                 yield path
-            elif mode is not None and stat.S_ISDIR(mode):
-                yield from walk(path, ancestors | {resolved})
+            else:
+                # Non-manifest files are validated at the key which actually
+                # references them, not as anonymous inventory entries.
+                mode = _mode(path, where)
+                if mode is not None and stat.S_ISDIR(mode):
+                    _contained(owner, path, where, message)
+                    _contained(root.resolve(), root.resolve() / path.relative_to(root), where, message)
+                    yield from walk(path, ancestors | {resolved})
 
     yield from walk(root, frozenset())
 
@@ -350,7 +360,7 @@ def _selection(text: str, source: SourceLocation) -> TemplateSelection:
         if not value:
             _error(location, "empty Template field")
         if not NAME.fullmatch(value):
-            _error(location, f"unknown project template {value!r}")
+            _error(location, f"unknown project template '{value}'")
         return TemplateSelection(value, True, location)
     if fenced:
         _error(SourceLocation(source.path, fenced[0][0]), "Template declaration is inside a fenced block")
@@ -371,7 +381,11 @@ def _cells(line: str) -> tuple[str, ...] | None:
     line = line.strip()
     if "|" not in line:
         return None
-    return tuple(cell.strip() for cell in line.strip("|").split("|"))
+    if line.startswith("|"):
+        line = line[1:]
+    if line.endswith("|"):
+        line = line[:-1]
+    return tuple(cell.strip() for cell in line.split("|"))
 
 
 def _separator(cells: tuple[str, ...] | None) -> bool:
@@ -385,7 +399,7 @@ def _tables(text: str):
     while index + 1 < len(lines):
         header = _cells(lines[index])
         separator = _cells(lines[index + 1])
-        if not header or not _separator(separator) or len(header) != len(separator):
+        if not header or _separator(header) or not _separator(separator) or len(header) != len(separator):
             index += 1
             continue
         header_line = index + 1
@@ -411,12 +425,14 @@ def _task_ids(text: str, task_header: tuple[str, ...]) -> Counter:
             continue
         for row in rows:
             cell = row[0].strip()
-            for marker in ("**", chr(96)):
-                if cell.startswith(marker):
-                    close = cell.find(marker, len(marker))
-                    if close != -1:
-                        cell = cell[len(marker):close] + " " + cell[close + len(marker):]
-                    break
+            marker_match = re.match(r"^(\*\*|" + re.escape(chr(96)) + r"+)", cell)
+            if marker_match:
+                marker = marker_match[1]
+                close = cell.find(marker, len(marker))
+                tail = cell[close + len(marker):] if close != -1 else ""
+                if close == -1 or (tail and not tail[0].isspace()):
+                    continue
+                cell = cell[len(marker):close]
             token = cell.split(maxsplit=1)[0] if cell.strip() else ""
             if TASK_ID.fullmatch(token):
                 ids[token] += 1
@@ -555,6 +571,7 @@ def _historical(workspace: Workspace, packs: tuple[Record, ...], commit: str
             tree[path[len(prefix):]] = mode
 
     def base_path(path: str) -> str | None:
+        original = path
         seen = set()
         while path not in seen:
             seen.add(path)
@@ -570,7 +587,11 @@ def _historical(workspace: Workspace, packs: tuple[Record, ...], commit: str
                         raise ValueError(f"base source {component} escapes the workspace root")
                     break
             else:
-                return path if path in tree else None
+                if path in tree:
+                    return path
+                if original in tree and tree[original] == "120000":
+                    raise ValueError(f"base source {original} is a dangling symlink")
+                return None
         raise ValueError(f"base source {path} has a symlink cycle")
 
     kinds = {kind.name: kind for kind in workspace.record_kinds if kind.pack}
@@ -626,13 +647,11 @@ def _historical(workspace: Workspace, packs: tuple[Record, ...], commit: str
     return found
 
 
-def _pack_errors(workspace: Workspace, record: Record, selection: TemplateSelection,
+def _pack_errors(workspace: Workspace, source: SourceLocation,
                  manifest: TemplateManifest, shape: CommonShape) -> list[LocatedError]:
     errors = []
-    authored = PurePosixPath(record.source.path).parent
+    authored = PurePosixPath(source.path).parent
     pack = (workspace.root / authored).resolve()
-    source = record.source
-    texts = {}
 
     def document(name: str, common: bool):
         path = pack / name
@@ -643,9 +662,7 @@ def _pack_errors(workspace: Workspace, record: Record, selection: TemplateSelect
             _contained(pack, path, location, f"template {manifest.name}: {name} must resolve inside pack root")
             if not _file(path, location):
                 _error(source, f"{prefix}: missing required document {name}")
-            text = _read(path, location)
-            texts[name] = text
-            return text
+            return _read(path, location)
         except LocatedError as exc:
             errors.append(exc)
             return None
@@ -719,16 +736,17 @@ def check_pack_shape(workspace: Workspace, records: RecordBatch | Iterable[Recor
     for record in packs:
         try:
             text = _read_source(workspace, record.source.path)
-            selection = _selection(text, record.source)
+            source = SourceLocation(record.source.path, _h1(text))
+            selection = _selection(text, source)
             previous = history.get(record.ref) if history is not None else None
             if not selection.explicit and previous is not None:
                 old = _selection(previous.text, SourceLocation(previous.path, _h1(previous.text)))
                 if old.explicit and old.name != "standard":
-                    _error(record.source, f"explicit Template field removed from {record.ref}; write **Template:** standard to select standard deliberately")
+                    _error(source, f"explicit Template field removed from {record.ref}; write **Template:** standard to select standard deliberately")
             if selection.explicit or (history is not None and previous is None):
                 if selection.name not in templates:
                     _error(selection.location, f"unknown project template {selection.name!r}")
-                selected.append((record, selection, templates[selection.name]))
+                selected.append((source, templates[selection.name]))
         except LocatedError as exc:
             errors.append(exc)
 
@@ -738,8 +756,8 @@ def check_pack_shape(workspace: Workspace, records: RecordBatch | Iterable[Recor
         except LocatedError as exc:
             errors.append(exc)
         else:
-            for record, selection, manifest in selected:
-                errors.extend(_pack_errors(workspace, record, selection, manifest, shape))
+            for source, manifest in selected:
+                errors.extend(_pack_errors(workspace, source, manifest, shape))
     errors.sort(key=lambda error: (error.source.path, error.source.line, error.message))
     return [str(error) for error in errors]
 
