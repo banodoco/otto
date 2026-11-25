@@ -7,7 +7,7 @@ from types import MappingProxyType
 from typing import Mapping
 
 from . import markdown
-from .config import RecordKind, Workspace, _inside
+from .config import DeclarationSourceMap, RecordKind, Workspace, _inside
 from .ids import IdResolver, LocatedError, RecordRef, SourceLocation, identity_from_path, validate_identity
 
 
@@ -94,14 +94,13 @@ def _frontmatter_error_line(text: str, message: str) -> int:
 
 def _frontmatter(text: str, path: str) -> tuple[dict[str, str], dict[str, SourceLocation], int]:
     try:
-        fields, body = markdown.frontmatter(text)
+        fields, _ = markdown.frontmatter(text)
     except ValueError as exc:
         message = str(exc)
         line = _frontmatter_error_line(text, message)
         if message == "duplicate frontmatter field 'status'":
             message = "duplicate status field"
         raise LocatedError(SourceLocation(path, line), message) from exc
-    offset = len(text.splitlines()) - len(body.splitlines())
     # The frontmatter reader permits only one-line values and one closing
     # delimiter. Count through that delimiter, including any blank body lines.
     offset = next(i + 1 for i, line in enumerate(text.splitlines()[1:], 1)
@@ -116,7 +115,8 @@ def _title(live: list[str], offset: int, path: str) -> tuple[str, int]:
     if index is None:
         raise LocatedError(SourceLocation(path, offset + 1 if offset < len(live) else max(1, len(live))),
                            "record document must start with a nonempty # title")
-    title = markdown.heading(live[index], missing="none")
+    headings = markdown.markdown_heading_anchors(live[index])
+    title = headings[0][1] if headings and headings[0][0] == 1 else None
     if not title or not re.search(r"[^\s#]", title):
         raise LocatedError(SourceLocation(path, index + 1),
                            "record document must start with a nonempty # title")
@@ -129,7 +129,7 @@ def _header_fields(live: list[str], title_index: int, path: str,
     status_seen = "status" in fields
     for index in range(title_index + 1, len(live)):
         line = live[index]
-        if markdown.headings(line, level=2):
+        if any(level == 2 for level, _, _ in markdown.markdown_heading_anchors(line)):
             break
         key, separator, value = next(iter(markdown.key_value_lines(line, style="bold")), ("", "", ""))
         if not separator:
@@ -147,8 +147,8 @@ def _header_fields(live: list[str], title_index: int, path: str,
 
 def _relationship_rows(text: str, live: list[str], path: str, ref: RecordRef,
                        title_index: int) -> tuple[RelationshipRow, ...]:
-    headings = [(i, names[0]) for i in range(title_index + 1, len(live))
-                if (names := markdown.headings(live[i], level=2))]
+    headings = [(i, title) for i in range(title_index + 1, len(live))
+                for level, title, _ in markdown.markdown_heading_anchors(live[i]) if level == 2]
     sections = [index for index, name in headings if name == "Relationships"]
 
     def fail(index, suffix):
@@ -208,7 +208,7 @@ def _read_source(workspace: Workspace, path: str) -> str:
     # Discovery checked containment; recheck before opening, since the working
     # tree can change between workspace discovery and record loading.
     root = workspace.root
-    source_map = workspace.source_map
+    source_map = DeclarationSourceMap(path, MappingProxyType({(): 1}))
     relative = root / path
     _inside(root, relative, source=source_map, key=(), label=path)
     try:
@@ -289,7 +289,7 @@ def _adapter_records(workspace: Workspace) -> RecordBatch:
 
     for record in result.records:
         if (not isinstance(record, Record) or not isinstance(record.ref, RecordRef)
-                or record.ref.kind not in adapter_kinds
+                or not isinstance(record.ref.kind, str) or record.ref.kind not in adapter_kinds
                 or (record.title is not None and not isinstance(record.title, str))
                 or (record.status is not None and not isinstance(record.status, str))
                 or any(not isinstance(k, str) or not isinstance(v, str)
@@ -308,6 +308,7 @@ def _adapter_records(workspace: Workspace) -> RecordBatch:
     for row in result.relationships:
         if (not isinstance(row, RelationshipRow) or not isinstance(row.source, RecordRef)
                 or not isinstance(row.target, RecordRef) or not isinstance(row.kind, str)
+                or not isinstance(row.source.kind, str) or not isinstance(row.target.kind, str)
                 or not isinstance(row.role, str)):
             invalid_batch()
         if not valid_location(SourceLocation(row.source_path, row.source_line), all_paths):
