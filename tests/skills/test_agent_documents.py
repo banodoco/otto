@@ -183,6 +183,21 @@ class AgentDocumentTests(unittest.TestCase):
         problems = validate_documents(self.root, CONFIG)
         self.assertTrue(any("real directory" in issue for issue in problems), problems)
 
+    def test_fixture_workstream_extension_adds_one_skill_without_removing_any(self):
+        self.write("roles/leader.md", ROLE)
+        self.write("shared/workstreams/plan.md", STREAM)
+        self.write("shared/glossary.md", REF)
+        before = discover_documents(self.root, CONFIG)
+        before_skills = {doc.skill_name for doc in before if doc.skill}
+        self.assertEqual(validate_documents(self.root, CONFIG), [])
+        self.write("shared/workstreams/extension-probe.md",
+                   STREAM.replace("# Plan\n", "# Extension probe\n"))
+        after = discover_documents(self.root, CONFIG)
+        after_skills = {doc.skill_name for doc in after if doc.skill}
+        self.assertEqual(len(after), len(before) + 1)
+        self.assertEqual(after_skills, before_skills | {"astrid-dev-extension-probe"})
+        self.assertEqual(validate_documents(self.root, CONFIG), [])
+
     def test_reject_source_symlink(self):
         original = self.write("shared/workstreams/plan.md", STREAM)
         link = self.root / "agent/shared/workstreams/other.md"
