@@ -301,5 +301,63 @@ class AgentDocumentTests(unittest.TestCase):
 
 
 
+
+    def test_guidance_roles_workstreams_and_references(self):
+        config = SkillConfig("otto-", Path("guidance"), Path(".generated/skills"))
+        sources = {
+            "roles/leader.md": ROLE,
+            "workstreams/plan.md": STREAM,
+            "workstreams/review.md": STREAM.replace("skill: true\n", ""),
+            "glossary.md": REF,
+            "other/notes.md": REF,
+        }
+        for relative, content in sources.items():
+            file = self.root / config.source_root / relative
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_text(content, encoding="utf-8")
+        docs = {doc.relative.as_posix(): doc for doc in discover_documents(self.root, config)}
+        self.assertEqual({path: doc.kind for path, doc in docs.items()}, {
+            "roles/leader.md": "role",
+            "workstreams/plan.md": "workstream",
+            "workstreams/review.md": "workstream",
+            "glossary.md": "reference",
+            "other/notes.md": "reference",
+        })
+        self.assertEqual({doc.skill_name for doc in docs.values() if doc.skill},
+                         {"otto-leader", "otto-plan"})
+        self.assertEqual(validate_documents(self.root, config), [])
+
+    def test_guidance_malformed_workstreams_use_existing_checks_even_without_skill(self):
+        config = SkillConfig("otto-", Path("guidance"), Path(".generated/skills"))
+        path = self.root / config.source_root / "workstreams" / "plan.md"
+        path.parent.mkdir(parents=True)
+        for flag in ("skill: true\n", ""):
+            original = STREAM.replace("skill: true\n", flag)
+            for malformed, expected in (
+                (original.replace("## Procedure", "## Method"), "missing or out-of-order"),
+                (original.replace("## Inputs", "## Temporary", 1)
+                         .replace("## Outcome", "## Inputs", 1)
+                         .replace("## Temporary", "## Outcome", 1), "out-of-order"),
+                (original.replace("Investigate, choose and document the narrow route.", ""),
+                 "must contain actual instructions"),
+                (original.replace("Investigate, choose and document the narrow route.", "TODO"),
+                 "substantive instructions"),
+            ):
+                with self.subTest(flag=flag, expected=expected):
+                    path.write_text(malformed, encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, expected):
+                        parse_document(self.root, path, config)
+                    self.assertIn(expected, str(validate_documents(self.root, config)))
+
+    def test_guidance_layout_does_not_reclassify_other_source_roots(self):
+        path = self.write("workstreams/notes.md", REF)
+        self.assertEqual(parse_document(self.root, path, CONFIG).kind, "reference")
+        config = SkillConfig("otto-", Path("guidance"), Path(".generated/skills"))
+        nested = self.root / config.source_root / "workstreams" / "archive" / "notes.md"
+        nested.parent.mkdir(parents=True)
+        nested.write_text(REF, encoding="utf-8")
+        self.assertEqual(parse_document(self.root, nested, config).kind, "reference")
+
+
 if __name__ == "__main__":
     unittest.main()
