@@ -80,8 +80,11 @@ class AgentDocument:
         return self.namespace + self.path.stem if self.skill else None
 
 
-def _kind(relative: Path) -> str:
+def _kind(relative: Path, source_root: Path) -> str:
     parts = relative.parts
+    if (source_root == Path("guidance") and len(parts) == 2
+            and parts[0] == "workstreams"):
+        return "workstream"
     if len(parts) == 2 and parts[0] == "roles":
         return "role"
     if ((len(parts) == 3 and parts[0] == "roles")
@@ -138,7 +141,7 @@ def parse_document(root: Path, path: Path, config: SkillConfig) -> AgentDocument
     title = lines[0] if lines else ""
     if not title.startswith("# ") or not title[2:].strip():
         raise ValueError("document must start with a nonempty # title")
-    kind = _kind(relative)
+    kind = _kind(relative, config.source_root)
     actual = headings(body, 2)
     cursor = 0
     for required in _SECTION_NAMES.get(kind, ()):
