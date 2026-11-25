@@ -646,3 +646,26 @@ These messages are approved for the cases OT-7 met that sections 11 and 13 do no
 | Enablers passed without a schema rule | `enablers require an explicit schema rule` |
 
 Plan 72's own messages (duplicate record identity, unknown record kind, invalid identity, unknown relationship kind, endpoint and role errors, the one-primary rule and the enabler prohibition) keep their wording; authored cases add a separate `path:line` prefix.
+
+## 16. Approved wording for template refusals section 11 does not list (OT-11)
+
+These messages are approved for the cases OT-11 met. Where a generic field-specific message already applies, that message is used instead.
+
+| Case | Message |
+| --- | --- |
+| Name | `invalid template name '<value>'; expected lowercase kebab-case` |
+| Version type | `version must be an integer` |
+| Document keys | `unknown key '<key>' in documents` / `missing required key '<key>' in documents` |
+| Document field types | `documents.<field> must be a string` / `documents.<field> must be a nonempty string` / `documents must be an array of tables` |
+| Workstream not Markdown | `template <name>: workstream must name a Markdown document` |
+| Quoted/non-token selector | `unknown project template '<authored value>'` |
+| Source heading order | `template <name>: document source <source> heading '## <heading>' is out of order` |
+| Common source missing | `common pack: missing template document <name>` |
+| Common source shape | `common pack: template <name> has no H2 headings` / `common pack: template tasks.md has no task table` |
+| Common actual missing | `common pack: missing required document <name>` |
+| Common actual headings | `common pack: <name> is missing heading '## <heading>'` / `common pack: <name> heading '## <heading>' is out of order` |
+| Common actual table | `common pack: no task table; start the file's first table with the template's header row.` / `common pack: the first table's header row differs from the template's; copy it exactly.` |
+| Missing default standard | `unknown project template 'standard'` |
+| Inventory | `template root must name a directory` / `template root must resolve inside <root>` |
+| Actual pack escape | `template <name>: <field> must resolve inside <root>` (actual document path, pack root) |
+| History failure | `cannot compare template selection: <reason>` |
