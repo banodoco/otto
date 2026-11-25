@@ -1,7 +1,7 @@
 """Read-only pipeline declarations and traversal over the shared record graph."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import re
 import stat
@@ -9,7 +9,7 @@ from types import MappingProxyType
 from typing import Iterable, Iterator, Mapping
 
 from .config import DeclarationSourceMap, KeyPath, Workspace, _Validator, _inside, read_declaration
-from .ids import RecordRef, SourceLocation
+from .ids import LocatedError, RecordRef, SourceLocation
 from .records import load_records
 from .relationships import (
     RelationKind, Relationship, RelationshipError, RelationshipIndex,
@@ -31,6 +31,11 @@ class Stage:
     optional: bool = False
     statuses: tuple[str, ...] | None = None
 
+    def __post_init__(self):
+        object.__setattr__(self, "kinds", frozenset(self.kinds))
+        if self.statuses is not None:
+            object.__setattr__(self, "statuses", tuple(self.statuses))
+
 
 @dataclass(frozen=True)
 class PipelineLink:
@@ -39,9 +44,9 @@ class PipelineLink:
     to_stage: str
     source: SourceLocation
     key: KeyPath
-    per_source: str
-    per_target: str
-    by_role: Mapping[str, Mapping[str, str]]
+    per_source: str = "any"
+    per_target: str = "any"
+    by_role: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
 
     def __post_init__(self):
         object.__setattr__(self, "by_role", MappingProxyType({
@@ -57,6 +62,10 @@ class Pipeline:
     links: tuple[PipelineLink, ...]  # adjacent display order, not arrow order
     source: SourceLocation
     source_map: DeclarationSourceMap
+
+    def __post_init__(self):
+        object.__setattr__(self, "stages", tuple(self.stages))
+        object.__setattr__(self, "links", tuple(self.links))
 
 
 @dataclass(frozen=True)
@@ -278,9 +287,9 @@ def load_pipeline(path: Path, schema: RelationshipSchema, *,
                     source.location(("id",)), source)
 
 
-def _read_error(source: SourceLocation, exc: BaseException):
-    from .ids import LocatedError
-    return LocatedError(source, f"cannot read {source.path}: {getattr(exc, 'strerror', None) or exc}")
+def _read_error(source: SourceLocation, exc: BaseException, *, display: str | None = None):
+    return LocatedError(source, f"cannot read {display or source.path}: "
+                        f"{getattr(exc, 'strerror', None) or exc}")
 
 
 def load_pipeline_inventory(paths: Iterable[Path], schema: RelationshipSchema, *,
@@ -320,7 +329,8 @@ def load_pipelines(workspace: Workspace, *,
     except FileNotFoundError:
         return MappingProxyType({})
     except OSError as exc:
-        raise _read_error(workspace.source_map.location(key), exc) from exc
+        raise _read_error(workspace.source_map.location(key), exc,
+                          display=directory.relative_to(workspace.root).as_posix()) from exc
     if not stat.S_ISDIR(mode):
         raise workspace.source_map.error(key, "paths.pipelines must name a directory")
     try:
