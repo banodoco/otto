@@ -1,0 +1,50 @@
+# Display order is the reverse of each authored relationship direction.
+version = 1
+id = "delivery"
+
+[[stages]]
+id = "goal"
+kinds = ["goal"]
+
+[[stages]]
+id = "gap"
+kinds = ["gap"]
+
+[[stages]]
+id = "project"
+kinds = ["project"]
+
+[[stages]]
+id = "release"
+kinds = ["release"]
+
+[[links]]
+relation = "measures"
+from = "gap"
+to = "goal"
+per_source = "one-or-more"
+per_target = "any"
+
+[links.by_role.primary]
+per_source = "exactly-one"
+per_target = "any"
+
+[links.by_role.supporting]
+per_source = "any"
+per_target = "any"
+
+[[links]]
+relation = "addresses"
+from = "project"
+to = "gap"
+# The named Dev adapter distinguishes explicit enablers from ordinary projects.
+per_source = "any"
+per_target = "any"
+
+[[links]]
+relation = "includes"
+from = "release"
+to = "project"
+# A valid project need not already belong to a release.
+per_source = "any"
+per_target = "any"

@@ -1,0 +1,28 @@
+# Lead decision 7174437754 confirms intake; issue in P95-04 was a wording slip.
+# This is the sole issue-or-idea pipeline, not an alias.
+version = 1
+id = "intake"
+
+[[stages]]
+id = "intake"
+kinds = ["issue", "idea"]
+
+[[stages]]
+id = "project"
+kinds = ["project"]
+
+[[links]]
+relation = "routes-to"
+from = "intake"
+to = "project"
+# An issue/idea may remain unassigned; a project needs no intake record.
+per_source = "any"
+per_target = "any"
+
+[links.by_role.primary]
+per_source = "at-most-one"
+per_target = "any"
+
+[links.by_role.supporting]
+per_source = "any"
+per_target = "any"
