@@ -613,3 +613,22 @@ RS1 accepted this contract with no blocking finding and seven bounded follow-ups
 5. **Diagnostic precedence (RS1.5).** When two rows in section 11 can describe one condition, the more specific row is the message; a generic row applies only where no specific row exists. For example, an empty `record_kinds.files` reports `record kind project requires at least one source pattern`, not `<field> must be nonempty`. Each later packet follows this rule and does not author the generic message for a condition a specific row covers.
 6. **Guidance layout (RS1.6).** For a workspace whose skill source root is `guidance`, documents under `guidance/workstreams/<file>.md` and `guidance/roles/<role>.md` are classified as workstreams and roles and get the same heading and content checks as Dev's `agent/shared/workstreams` and `agent/roles` documents. OT-16 and OT-17 carry this classification, with a malformed-workstream case; the TOML schema needs no new option.
 7. **Helper moves (RS1.7).** `checks._body` and `views._index_parts` are extracted into Otto by OT-13 (check and view assembly); until then Dev keeps its own thin helpers, and Dev does not import them from Otto before OT-13 has merged.
+
+## 14. Approved wording for refusals section 11 does not list (OT-7)
+
+These messages are approved for the cases OT-7 met that sections 11 and 13 do not word. Where a generic field-specific message (required, type, nonempty, containment, directory) already applies, that message is used instead.
+
+| Case | Message |
+| --- | --- |
+| Invalid workspace name | `invalid workspace name '<value>'; expected lowercase kebab-case` |
+| Empty tag | `otto.tag must be nonempty` |
+| Unknown ID source | `unknown ID source '<value>'; expected <the sources section 3 lists, joined with ", ">` |
+| Bad source pattern | `invalid source pattern '<pattern>': <reason>` |
+| Output path through a symlink | `<key> must not be or pass through a symlink` |
+| Unreadable file or root | `cannot read <path>: <operating-system message>` |
+| Adapter module not a Python file | `adapters.module must name a .py file inside the workspace` |
+| Adapter export not a bare name | `adapter export name '<name>' must be a bare identifier` |
+| Registration without a module | `registrations require adapters.module` |
+| Pack kind matching a file not named plan.md | `record kind <kind> sets pack = true but its pattern matched '<file>', which is not named plan.md` |
+| Empty role or name field | `<field> must be a nonempty string` |
+| Relationships table | `invalid Relationships table: <suffix>`, with the suffixes `duplicate Relationships section`, `expected Relation | Target | Role header`, `invalid separator row`, `expected exactly three cells`, `blank cell`, `non-table content` and `invalid typed target reference` |
