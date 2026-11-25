@@ -35,11 +35,11 @@ The candidate is linked to exact revisions and focused results, with all remaini
 
 ## Implement
 
-Each single fix is one [Iterate](iterate.md) card.
+Each single fix is one Iterate card.
 
 - Use the cheapest venue that can prove the stated claim. A higher venue alone does not make proof stronger.
 
-Two different activities share the word "test". Keep them apart.
+Two different activities share the word "test". Keep iteration separate from qualifying proof (see the [run contract](../run-contract.md#when-a-test-run-is-load-bearing)).
 
 - **Iterating** is getting one red test to green. It is cheap and disposable. Reproduce the failing test with its exact command, keep the full raw output in your workdir, read the first error before forming a hypothesis, fix the cause, and rerun that test as often as you need. Reruns on a new commit need no permission, no review and no committed record. Stop at the worker threshold in the [run contract](../run-contract.md#cheapest-model-first) and hand the manager the raw output, what you tried and your best guess.
 
@@ -65,11 +65,11 @@ Use when the plan is a [loop plan](../glossary.md): its end state is known, its 
 
 - **Strategist:** the run's high-judgment advisor binding, read-only (`-s read-only`), consulted on strategy each round. Its advice is evidence, not a verdict; it tends to over-engineer, so ask it what to remove first.
 
-3. **Ask the strategist:** give it the row and the previous rows, not your conclusion.
+**Ask the strategist:** give it the row and the previous rows, not your conclusion.
 
-4. **Pick the fixes.** Each is one failing scenario, a cause, and the smallest change at its source.
+**Pick the fixes.** Each is one failing scenario, a cause, and the smallest change at its source.
 
-5. **Fix** each as an ordinary [Iterate](iterate.md) run, a PR into the plan branch, with the failing live scenario as its red test.
+**Fix** each as an ordinary Iterate run, a PR into the plan branch, with the failing live scenario as its red test.
 
 Append each round's rows, picks and PRs under the loop card in `tasks.md`; progress PRs follow [whole project](../roles/manager.md#progress-is-always-current).
 

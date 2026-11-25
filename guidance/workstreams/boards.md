@@ -26,15 +26,15 @@ No generic rule yet.
 
 ## Establish the mailbox
 
-1. Start from an accepted plan and its authorized `Run start`; name **one accountable plan manager**. Use the plan's board ([rules](../run-contract.md#coordination-boards-and-check-ins)) and agree durable per-session identities and cursors.
+For a continuing plan manager in a separate Codex Cloud session, start from an accepted plan and its authorized `Run start`; name **one accountable plan manager**. Use the plan's board ([rules](../run-contract.md#coordination-boards-and-check-ins)) and agree durable per-session identities and cursors.
 
-2. Give each session the plan/task links, exact proof, branches, limits and its manager/advisor roles. Follow [Manage](../roles/manager.md) inside the accountable manager session.
+Give each session the plan/task links, exact proof, branches, limits and its manager/advisor roles. Follow [Manage](../roles/manager.md) inside the accountable manager session.
 
 1. The orchestrator selects a dedicated issue and gives both managers its URL, run ID, role names and scope. Confirm each session can open the issue and comment. A public repo's issue and comments are public: never post credentials, private logs, prompts or sensitive account data; use a private location if required.
 
 2. Give every session a unique, non-secret `session_id` for this run (for example `project-a-manager-1` and `project-b-manager-1`) and record the role-to-session mapping in the run record and each manager's initial brief. Keep the ID on resume; assign a new one and record the handoff when replacing a session. A role identifies the job; a session ID identifies the chat doing it. Each brief includes task scope, model routing, budget, completion rule and issue URL. Record the issue URL and last processed comment ID in durable run records; cursors are per session.
 
-3. Use a distinct `message_id` (UUID) per logical message and append a new comment for each message or correction. Never rely on edits of earlier comments. Suggested format:
+3. Use a distinct `message_id` (UUID) per logical message and append a new comment for each message or correction. Never rely on edits of earlier comments. See [Message format](#message-format).
 
 Before relying on this in production, test one non-sensitive message and acknowledgment **in both directions**, including two sessions using the same account and a restart/replay. Verify permissions, polling, duplicate handling and how the waiting recipient resumes.
 
@@ -51,6 +51,7 @@ to: <role or all>
 to_session: <session-id or all>
 type: STATUS | REQUEST | DECISION | ACK | DONE | BLOCKED
 reply_to: <message-id or none>
+
 <short message, exact SHA / evidence link / requested action>
 ```
 
@@ -62,13 +63,13 @@ Record a send as complete only after the API's successful response. GitHub rate-
 
 1. **Read by cursor** ([rules](../run-contract.md#coordination-boards-and-check-ins)): your board, and your parent's board for messages to you.
 
-Read **all** returned comments, including your own account's; route by `run`, `from`, `from_session`, `to` and `to_session`, not the GitHub username. Handle in order. For a message addressed to you, perform only an authorized, idempotent action, then post an `ACK` referencing `message_id` and update your own durable cursor. Process irrelevant comments too before advancing the cursor. On restart, recover the cursor and outstanding acknowledgments from durable records; if uncertain, replay and deduplicate by message ID. If a send's outcome is ambiguous, inspect the issue for that message ID before retrying. Don't use an `--after` cursor filter to skip unprocessed comments.
+Read **all** returned comments, including your own account's; route by `run`, `from`, `from_session`, `to` and `to_session`, not the GitHub username. Handle in order. For a message addressed to you, perform only an authorized, idempotent action, then acknowledge it referencing `message_id` and update your own durable cursor; use `ACK` unless the [run contract's coordination rules](../run-contract.md#coordination-boards-and-check-ins) specify a consolidated STATUS. Process irrelevant comments too before advancing the cursor. On restart, recover the cursor and outstanding acknowledgments from durable records; if uncertain, replay and deduplicate by message ID. If a send's outcome is ambiguous, inspect the issue for that message ID before retrying. Don't use an `--after` cursor filter to skip unprocessed comments.
 
 ## Check-ins and liveness
 
-3. Follow the agreed check-in cadence to reconcile GitHub evidence and recover stalled sessions; a GitHub comment or timer alone **cannot wake** an idle Codex Cloud chat. Do not promise unattended progress without a verified resume mechanism.
+For separate Codex Cloud sessions, follow the agreed check-in cadence to reconcile GitHub evidence and recover stalled sessions; a GitHub comment or timer alone **cannot wake** an idle Codex Cloud chat. Do not promise unattended progress without a verified resume mechanism.
 
-5. **Post one hourly STATUS** on your board ([rules](../run-contract.md#coordination-boards-and-check-ins)): `acted on:` and `cursor:` lines, then a line per open packet with state, session, latest evidence (or no change) and next action. That STATUS, with `cursor:` your last processed comment, is the live record of handoffs and sessions; the Lead copies it to `run.md`.
+For fresh-packet dispatch, **post one hourly STATUS** on your board ([rules](../run-contract.md#coordination-boards-and-check-ins)): `acted on:` and `cursor:` lines, then a line per open packet with state, session, latest evidence (or no change) and next action. That STATUS, with `cursor:` your last processed comment, is the live record of handoffs and sessions; the Lead copies it to `run.md`.
 
 - Use an agreed GitHub issue as an append-only mailbox; each session reads comments directly, including comments from the same GitHub account. This path does **not** depend on GitHub creating a self-notification. The issue is durable; delivery is at least once, not exactly once.
 

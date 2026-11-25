@@ -11,7 +11,7 @@ Deliver the engineering quality of the assigned outcome.
 
 ## Authority
 
-Running one accepted project: [Manage](manager.md); ask the advisor ([Orchestrate](orchestrator.md)) for a genuine blocker or consequential choice
+When running one accepted project, ask the advisor ([Orchestrate](orchestrator.md)) for a genuine blocker or consequential choice.
 
 Stay inside the accepted tasks, run authority and evidence limits.
 
@@ -49,7 +49,7 @@ Own the engineering quality of **the assignment you were given**. Work from its 
 
 ## Progress is always current
 
-7. **Progress is always current.** This is a key responsibility. `tasks.md` is the run's only progress record; the owner and every check-in read it on `main`, and a record that isn't there doesn't count.
+For the whole-project manager, **progress is always current.** This is a key responsibility. `tasks.md` is the run's only progress record; the owner and every check-in read it on `main`, and a record that isn't there doesn't count.
 
 - Update the plan's `tasks.md` when a task lands (`[x]`, with its merge), is blocked (and why), or is created or stopped. Batch the rest, such as which tasks started, into the next of those updates.
 
@@ -61,7 +61,7 @@ Own the engineering quality of **the assignment you were given**. Work from its 
 
 ## Decide
 
-Whole-project decision log and escalation details: [whole-project workstream](#decide). Packet-specific boundaries: [packet workstream](../workstreams/packet-dispatch.md#receive-implement-submit).
+The following decision log and escalation details are for the whole-project manager. Packet-specific boundaries: [packet workstream](../workstreams/packet-dispatch.md#receive-implement-submit).
 
 You are expected to decide. The advisor is for thinking that is bigger than your project, not for permission.
 
@@ -87,7 +87,7 @@ Findings, rulings, scope trades and contained incidents go in the decision log, 
 
 ## Steps
 
-Whole-project execution, proof, task integration and progress steps: [whole-project workstream](#steps). For a fresh packet use [its bounded handoff](../workstreams/packet-dispatch.md#receive-implement-submit).
+These are the whole-project execution, proof, task integration and progress steps. For a fresh packet use [its bounded handoff](../workstreams/packet-dispatch.md#receive-implement-submit).
 
 When one accountable Manager is assigned the full plan run rather than an isolated fresh-session packet.
 
@@ -107,7 +107,7 @@ Apply the [general Manage principles](manager.md) and the [run contract](../run-
 
 - **One run per ref.** Workflows that cancel in progress cancel on any second dispatch or push to the same ref, with no author shown. Never dispatch twice on one ref or push to a ref while its qualifying run is in flight, and never dispatch on another project's ref.
 
-2. **Dispatch.** Send each ready task to a subagent on its route. In the card put its outcome, scope (what it may change; a path includes its own tests, wherever they live), dependencies, exact starting versions, acceptance check and authority.
+**Dispatch.** Send each ready task to a subagent on its route. In the card put its outcome, scope (what it may change; a path includes its own tests, wherever they live), dependencies, exact starting versions, acceptance check and authority.
 
 - Tell an X or S task to delegate research, reading, mechanical edits and checks to N helpers. Send a T task what [its rule](../run-contract.md#who-answers-for-a-run) lists and have it return the exact before and after.
 
@@ -133,7 +133,7 @@ Apply the [general Manage principles](manager.md) and the [run contract](../run-
 
 - Each task gets a fresh checkout from the latest head. Delete it, with its installed dependencies, as soon as it lands: session disk is a small shared allowance and a full disk stops every tool.
 
-4. **Land into the project's plan branch, then its authorized integration target; never push directly to `main`.**
+**Land into the project's plan branch, then its authorized integration target; never push directly to `main`.**
 
 - Check the changed files stay inside the scope; if not, stop and ask the advisor.
 
@@ -141,9 +141,9 @@ Apply the [general Manage principles](manager.md) and the [run contract](../run-
 
 - A check already failing on the base (found when you recorded the baseline) neither blocks the merge nor becomes this project's work: note it once for the owner and leave it to its own project (see [checks and failure repair](../run-contract.md#checks-and-failure-repair)).
 
-5. **Escalate.**
+**Escalate.**
 
-- **Decide these yourself; don't ask:**
+**Decide these yourself; don't ask:**
 
 - merge a disjoint task as soon as its own proof passes;
 
@@ -161,7 +161,7 @@ If you're resumed after a restart, rebuild your state from durable records first
 
 ## Report
 
-Whole-project completion evidence: [whole-project workstream](#report). Every manager reports hourly by the run contract's [coordination rules](../run-contract.md#coordination-boards-and-check-ins); packet sessions submit PRs/proof on their board and stop.
+Report whole-project completion evidence as set out in [Final handoff](../workstreams/review.md#final-handoff). Every manager reports hourly by the run contract's [coordination rules](../run-contract.md#coordination-boards-and-check-ins); packet sessions submit PRs/proof on their board and stop.
 
 Post the hourly STATUS on the plan's board ([rules](../run-contract.md#coordination-boards-and-check-ins)).
 

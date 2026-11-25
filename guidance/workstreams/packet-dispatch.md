@@ -26,7 +26,7 @@ Every assigned task has a traceable disposition, exact candidate source and proo
 
 ## Prepare and dispatch
 
-Prepare bounded packets and the coordination boards, run Lead check-ins, review delivered task PRs and integrate only authorized work using the sections below.
+**Lead — prepare the queue:** Prepare bounded packets and the coordination boards, run Lead check-ins, review delivered task PRs and integrate only authorized work using the sections below.
 
 The queue and task records reflect every packet, its evidence and disposition, with review/integration decisions owned by the Lead.
 
@@ -40,7 +40,7 @@ Use when the Lead prepares accepted plan work for an Orchestrator to assign to *
 
 - **A sweep carries its count:** every site found and every site changed, in the PR before review. Audit it against a count you take yourself.
 
-The live run board, accepted packet briefs, task rows, mailbox, session access, capacity and dispatch authority.
+**Orchestrator — dispatch the queue:** The live run board, accepted packet briefs, task rows, mailbox, session access, capacity and dispatch authority.
 
 Run startup and resume checks, dispatch one packet per session, track check-ins and surface blocked work for Lead decisions.
 
@@ -58,7 +58,7 @@ Every dispatched packet has an identified session, current state and evidence or
 
 ## Receive implement submit
 
-The packet ends with `READY-PROOF <repo> <PR> <head> <selectors>`. A cache or speed packet emits its counters (hit, miss, recompute); the work track reads them before trusting a timing and measures the numeric gate on the exact head.
+The packet's exact handoff format is given in the start-message excerpt and submit step below. A cache or speed packet emits its counters (hit, miss, recompute); the work track reads them before trusting a timing and measures the numeric gate on the exact head.
 
 Start-message excerpt (use the accepted plan and authority for the complete brief):
 
@@ -82,7 +82,7 @@ Use when a fresh ChatGPT session receives **one** accepted packet from the [Orch
 
 2. **Implement.** Work directly, and link the plan/task IDs.
 
-- **Proof.** Write the code and its tests. Before `READY-PROOF`, merge the destination's current head ([integration boundaries](../run-contract.md#review-and-promotion-boundaries)) and name it in STATUS.
+- **Proof.** Write the code and its tests; the orchestrator runs proof as stated in the start-message excerpt. Before `READY-PROOF`, merge the destination's current head into the packet branch ([integration boundaries](../run-contract.md#review-and-promotion-boundaries)) and name it in STATUS.
 
 - **Scope.** The packet's **May touch** is yours. An adjacent edit of about 20 lines or fewer outside it, and not in **Must not touch**, is allowed without asking: list it in the PR body under "adjacent edits". Anything larger, or anything in Must not touch, is one BLOCKED with the exact list.
 
@@ -96,7 +96,7 @@ Use when a fresh ChatGPT session receives **one** accepted packet from the [Orch
 
 4. **If blocked**, post `BLOCKED` with the failure, what you tried and the action needed; continue independent work.
 
-**Do not merge, update `tasks.md` or claim the plan is finished:** those are the Lead's. A row the plan lacks goes in STATUS as a proposal.
+**Do not merge task PRs, update `tasks.md` or claim the plan is finished:** those are the Lead's. A row the plan lacks goes in STATUS as a proposal.
 
 ## Dependencies and shared writers
 
@@ -106,7 +106,7 @@ Use when a fresh ChatGPT session receives **one** accepted packet from the [Orch
 
 ## Liveness and replacement
 
-**Keep work moving. Every hop between sessions costs up to an hour.**
+**Lead — keep work moving. Every hop between sessions costs up to an hour.**
 
 - **Rule conditionally.** When a gate needs one more result, rule it with its condition and its next step attached, for example "merge when this run shows no new ids; if one is harm-class, cut a packet". That way nobody comes back to you.
 
@@ -114,7 +114,7 @@ Use when a fresh ChatGPT session receives **one** accepted packet from the [Orch
 
 - **Keep managers up.** A ChatGPT manager runs for a window of about two hours, and a board comment can't wake it. Never stand one down while its plan may still need packets. When one goes quiet with work waiting, give the owner the exact text to paste to resume it.
 
-Every 20 minutes while a packet is Running or in Review, a short pass relays submissions, resumes stalled sessions and starts Ready packets. The STATUS stays hourly. If your own run ends, for example at the end of a ChatGPT agent window, say so in your last STATUS, with the text the owner pastes to resume you. Don't stop while your plan may still need packets.
+**Orchestrator — check-in pass:** At the [manager cadence](#liveness-and-replacement) a short pass relays submissions, resumes stalled sessions and starts Ready packets. The STATUS stays hourly. If your own run ends, for example at the end of a ChatGPT agent window, say so in your last STATUS, with the text the owner pastes to resume you. Don't stop while your plan may still need packets.
 
 The branch, not the chat, shows health. No commit or STATUS for 3 hours: resume it. A chat that will not load after one reload, is silent 30 minutes after a resume, or is quiet for 6 hours is broken: replace it once its branch has not moved for 30 minutes, naming the head in the replacement's first message. Never two writers on one branch.
 

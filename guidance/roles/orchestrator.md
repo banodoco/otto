@@ -15,7 +15,7 @@ Coordinate but do not assume a manager's execution or owner powers.
 
 ## Responsibilities
 
-Supervising managers or dispatching work sessions: [Orchestrate](orchestrator.md): keep manager runs and handoffs moving, advise and check in
+When supervising managers or dispatching work sessions, keep manager runs and handoffs moving, advise and check in.
 
 Dispatch, advise and unblock according to the run.
 
@@ -62,13 +62,10 @@ Report where managers stand and who must act next.
 
 3. **Farm it out.** Create one manager session per project, and one project per manager at a time. Give it:
 
-- the plan's path;
-
-- **the tests, already chosen.** Check that `tasks.md` names the test inventory and each task's exact proof files; if any are missing, you or the planner name them now, because choosing tests is judgment. Tell the manager to run only those, at the [load-bearing moments](../run-contract.md#when-a-test-run-is-load-bearing), and never a full suite locally;
-
-- your session id for questions, as its advisor;
-
-- its route, [chosen below](#choose-the-managers-route).
+   - the plan's path;
+   - **the tests, already chosen.** Check that `tasks.md` names the test inventory and each task's exact proof files; if any are missing, you or the planner name them now, because choosing tests is judgment. Tell the manager to run only those, at the [load-bearing moments](../run-contract.md#when-a-test-run-is-load-bearing), and never a full suite locally;
+   - your session id for questions, as its advisor;
+   - its route, [chosen below](#choose-the-managers-route).
 
 4. **Schedule check-ins** if the owner wants them (path 3).
 
@@ -137,7 +134,7 @@ Delegated work and remaining blockers have verified receipts and an authorized h
 
 Choose when a Claude Cloud session runs Codex in its container, either as **workers** (default) or, when justified, as a managed Codex process. Follow the general [Orchestrate role](orchestrator.md) and [run contract](../run-contract.md).
 
-A Claude cloud session can run Codex in its own container (see the workspace-owned environment guide). There are two shapes, and Codex workers are the default:
+A Claude cloud session can run Codex in its own container (see the workspace-owned environment guide). The two shapes are described here; see [Who answers for a run](../run-contract.md#who-answers-for-a-run) for who is accountable in each shape.
 
 **Shape: who manages and when to use it.**
 
@@ -151,17 +148,14 @@ This section is the home of the default Codex worker choice; other documents lin
 
 - **You host it.** Codex can't keep itself alive, wake itself, reach the owner or run a model outside Codex; you hold all of those. Say "my run" and "my Codex manager". At every check-in, without waiting for the mailbox:
 
-- **Compare `tasks.md` and the plan branch with the last check-in.** If nothing moved, read `codex.log` for why and send one next action through `to-codex.md`.
-
-- **Start every task Codex can't run** (a route bound to a Claude model, or the review) as soon as its inputs have landed, or Codex writes `READY: <task id>` to the mailbox; don't wait to be asked.
-
-- **Clear what is stuck on your side:** an unmerged or conflicting progress PR, a dead runner, a refused command to take to the owner.
-
-- **Open the final PR and bring the owner their decisions.**
+  - **Compare `tasks.md` and the plan branch with the last check-in.** If nothing moved, read `codex.log` for why and send one next action through `to-codex.md`.
+  - **Start every task Codex can't run** (a route bound to a Claude model, or the review) as soon as its inputs have landed, or Codex writes `READY: <task id>` to the mailbox; don't wait to be asked.
+  - **Clear what is stuck on your side:** an unmerged or conflicting progress PR, a dead runner, a refused command to take to the owner.
+  - **Open the final PR and bring the owner their decisions.**
 
 - **Codex still manages the tasks.** Don't redo its fixes, re-review what its reviewer passed, or relay its branches: it dispatches, judges and integrates under its starting brief. Answer its questions, and raise a structural cause when its reports show a pattern it hasn't named.
 
-**For Codex workers under a Claude manager:** For the default choice see [Use Codex from Claude Cloud](#use-codex-from-claude-cloud). You stay the manager: check each result is inside the card's scope, re-run every proof the card names, then commit and integrate. Don't start a Codex manager unless your `Run start` line says to.
+**For Codex workers under a Claude manager:** You stay the manager: check each result is inside the card's scope, re-run every proof the card names, then commit and integrate. Don't start a Codex manager unless your `Run start` line says to.
 
 The choice between the two shapes is made in this section. The worker instructions are for Codex workers under a Claude manager; the instructions on briefing and hosting a manager are for a Codex manager. Which model each route uses is the run contract's [table](../run-contract.md#routing-and-bindings).
 
@@ -175,7 +169,7 @@ Separate Codex Cloud sessions coordinated through one durable mailbox, with owne
 
 An accepted plan, named accountable manager, permitted session identities, mailbox, task boundaries and tested resume mechanism.
 
-Register sessions, send bounded briefs, reconcile their evidence and recover stalled work using the workspace-owned Codex Cloud guide.
+Register sessions, send bounded briefs, reconcile their evidence and recover stalled work using the workspace-owned Codex Cloud guide and [boards workstream](../workstreams/boards.md#establish-the-mailbox).
 
 The manager has a complete session handoff and traceable task evidence; unwakeable sessions are reported rather than assumed active.
 

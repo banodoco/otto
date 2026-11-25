@@ -7,7 +7,7 @@ skill: true
 
 ## When to use
 
-Planning a new project: [Planner](plan.md): define the accepted scope and tasks
+For a new project, define the accepted scope and tasks.
 
 When defining a new project outcome that cannot reasonably be handled as an existing issue or task.
 
@@ -39,17 +39,17 @@ Terms follow the [glossary](../glossary.md).
 
 You, the **planner** (an administrator: gather evidence, write the task cards, and send consequential judgment to the advisor), produce an agreed, testable end state and tasks another agent can run. An orchestrator may also plan a project itself before farming it out.
 
-1. **Projects are for new, separately useful outcomes** with their own priority, owner and completion proof. Bugs, small fixes and maintenance normally go in issues; existing project tasks use their accepted plan. Write a [loop plan](../glossary.md) only when the end state is clear but the tasks can't be known until a live round measures them; [how it runs](iterate.md#live-loops).
+**Projects are for new, separately useful outcomes** with their own priority, owner and completion proof. Bugs, small fixes and maintenance normally go in issues; existing project tasks use their accepted plan. Write a [loop plan](../glossary.md) only when the end state is clear but the tasks can't be known until a live round measures them; [how it runs](iterate.md#live-loops).
 
-3. **Agree the outcome once.** Record the owner's actual choice with a traceable source; a draft project or PR, or no objection, is not approval. Keep earlier accepted scope; avoid repeated sign-offs.
+**Agree the outcome once.** Record the owner's actual choice with a traceable source; a draft project or PR, or no objection, is not approval. Keep earlier accepted scope; avoid repeated sign-offs.
 
 Trace input → actual implementation → user-visible result, noting useful source revisions, reuse, negative findings and uncertainties. Delegate bounded research when helpful, but no broad audit without a decision it could change.
 
-2. **Pick the smallest complete result.** Justify placement and tradeoffs from evidence, not architectural preference.
+**Pick the smallest complete result.** Justify placement and tradeoffs from evidence, not architectural preference.
 
-3. **Challenge in proportion to consequence.** See the [run contract](../run-contract.md#review-and-promotion-boundaries). Where an independent critique is required and there is no standing advisor, use a fresh high-judgment subagent with no stake in your draft. Record its findings and what you accepted, rejected or left to the owner. A simple bounded project needs only a concise alternatives review and a reason to skip the critique.
+**Challenge in proportion to consequence.** See the [run contract](../run-contract.md#review-and-promotion-boundaries). Where an independent critique is required and there is no standing advisor, use a fresh high-judgment subagent with no stake in your draft. Record its findings and what you accepted, rejected or left to the owner. A simple bounded project needs only a concise alternatives review and a reason to skip the critique.
 
-4. **Agree the outcome.** Present the real options (as many as the owner needs; ten is a useful technique, not a quota), their user-facing tradeoffs and a testable end state. When the change is complex, or the owner has to picture it to decide, [offer ten vivid statements](#define-the-project).
+**Agree the outcome.** Present the real options (as many as the owner needs; ten is a useful technique, not a quota), their user-facing tradeoffs and a testable end state. When the change is complex, or the owner has to picture it to decide, offer ten vivid statements as described below.
 
 A long plan hides its biggest decisions. When the work is meaningfully complex (a hard fix, a change to how people work, several decisions the owner must make), ask the owner whether they want about ten statements before they read the plan, and write them if they do. Skip the offer for a simple, bounded project.
 
@@ -85,7 +85,7 @@ In the workspace tasks template, every task has a **scope** (the paths, and any 
 
 ## Dependencies and proof
 
-- **Dependencies,** only where one task needs another's result, or both change the same function, class or contract. Sharing a file is not a dependency: tasks that change different functions in one file run in parallel, with a merge order. The same applies across other active projects. If a shared surface needs one model first, consult the advisor.
+- **Dependencies,** only where one task needs another's result or where the [shared-writer rule](packet-dispatch.md#dependencies-and-shared-writers) requires ordering. Sharing a file is not itself a dependency; see that section for parallel disjoint functions and merge order. The same applies across other active projects. If a shared surface needs one model first, consult the advisor.
 
 - **The critical path:** state it in `tasks.md`, and keep it as short as the work allows. Chain tasks only where the rule above requires it.
 
