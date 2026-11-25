@@ -135,7 +135,7 @@ def check_view(view: View, root: Path, hint: str = "regenerate the view") -> lis
     except (OSError, subprocess.CalledProcessError) as exc:
         return [f"view {view.name}: cannot check {view.target}: {exc}; "
                 f"{view.target} is generated from {', '.join(view.sources)}, so fix any error there, "
-                ff"then {hint}"]
+                f"then {hint}"]
     return []
 
 
