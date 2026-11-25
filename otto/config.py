@@ -18,6 +18,7 @@ import re
 import stat
 import sys
 import tomllib
+from uuid import uuid4
 from types import MappingProxyType, ModuleType
 from typing import Callable, Mapping
 
@@ -146,6 +147,7 @@ class _SourceIndexer:
             path += (name,)
             self.locations.setdefault(path, line)
         self.pop()  # =
+        self.skip_lines()
         self.value(path)
 
     def value(self, path: KeyPath):
@@ -326,7 +328,11 @@ class Workspace:
 
     def export(self, name: str, *, declaration: KeyPath) -> Callable:
         """Resolve a callable in the already loaded, explicitly named module."""
-        value = getattr(self._module, name, None)
+        try:
+            value = getattr(self._module, name, None)
+        except Exception as exc:
+            module = self.config.adapters.module if self.config.adapters else ''
+            raise self.source_map.error(declaration, f"cannot load adapter {module}: {exc}") from exc
         if not callable(value):
             raise self.source_map.error(declaration,
                                         f"adapter export {name!r} is missing or not callable")
@@ -342,7 +348,7 @@ def _freeze(value):
 
 
 def _path_reason(value: str, *, allow_dot: bool) -> str | None:
-    if not value:
+    if not value.strip():
         return "empty path"
     if value.startswith("/") or re.match(r"^[A-Za-z]:", value):
         return "absolute paths are not allowed"
@@ -449,13 +455,13 @@ class _Validator:
             self.fail(key, f"{label} must be a nonempty string")
         return value
 
-    def strings(self, value, key: KeyPath) -> tuple[str, ...]:
+    def strings(self, value, key: KeyPath, *, nonempty: bool = True) -> tuple[str, ...]:
         if not isinstance(value, list):
             self.fail(key, f"{self.label(key)} must be an array of strings")
         for index, item in enumerate(value):
             if not isinstance(item, str):
                 self.fail(key + (index,), f"{self.label(key)} must be an array of strings")
-            if not item.strip():
+            if nonempty and not item.strip():
                 self.fail(key + (index,), f"{self.label(key)} must be a nonempty string")
         return tuple(value)
 
@@ -487,7 +493,7 @@ class _Validator:
                 self.fail(key + ("name",), f"duplicate record kind {name!r}")
             seen.add(name)
             root = self.string(value["root"], key + ("root",))
-            files = self.strings(value["files"], key + ("files",))
+            files = self.strings(value["files"], key + ("files",), nonempty=False)
             if not files:
                 self.fail(key + ("files",), f"record kind {name} requires at least one source pattern")
             for j, pattern in enumerate(files):
@@ -496,7 +502,7 @@ class _Validator:
                     reason = "'**' must be a complete path component"
                 if reason:
                     self.fail(key + ("files", j), f"invalid source pattern {pattern!r}: {reason}")
-            reader = self.string(value["reader"], key + ("reader",))
+            reader = self.string(value["reader"], key + ("reader",), nonempty=False)
             if reader not in {"headers", "frontmatter", "adapter"}:
                 self.fail(key + ("reader",),
                           f"unknown reader {reader!r}; expected headers, frontmatter or adapter")
@@ -513,10 +519,10 @@ class _Validator:
             if name not in known:
                 self.fail(key, f"ID policy names unknown kind {name!r}")
             self.table(value, key, {"policy", "source", "pattern"}, ("policy", "source"))
-            policy = self.string(value["policy"], key + ("policy",))
+            policy = self.string(value["policy"], key + ("policy",), nonempty=False)
             if policy not in ID_PRESETS:
                 self.fail(key + ("policy",), f"unknown ID policy {policy!r}")
-            source = self.string(value["source"], key + ("source",))
+            source = self.string(value["source"], key + ("source",), nonempty=False)
             if source not in ID_SOURCES:
                 self.fail(key + ("source",),
                           f"unknown ID source {source!r}; expected {', '.join(ID_SOURCES)}")
@@ -795,7 +801,7 @@ def _load_adapter(root: Path, path: Path, declared: str,
     # Execute the exact file rather than searching sys.path or using a stale
     # bytecode cache. Avoid writing __pycache__ for this module. Workspace
     # code and its own imports are trusted, not sandboxed.
-    name = f"_otto_workspace_{id(code):x}"
+    name = f"_otto_workspace_{uuid4().hex}"
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
@@ -810,12 +816,20 @@ def _load_adapter(root: Path, path: Path, declared: str,
 def load_workspace(root: Path | str) -> Workspace:
     """Select exactly this root; validate the declaration and its contained inputs."""
     root = Path(root)
-    if not root.is_dir():
-        raise ValueError(f"workspace root is not an existing directory: {root}")
-    root = root.resolve()
+    try:
+        if not root.is_dir():
+            raise ValueError(f"workspace root is not an existing directory: {root}")
+        root = root.resolve()
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(f"cannot read {root}: {getattr(exc, 'strerror', None) or exc}") from exc
     path = root / "otto.toml"
-    if not path.exists() and not path.is_symlink():
-        raise ValueError(f"no otto.toml found in {root}")
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        raise ValueError(f"no otto.toml found in {root}") from None
+    except OSError as exc:
+        raise LocatedError(SourceLocation("otto.toml", 1),
+                           f"cannot read otto.toml: {exc.strerror or exc}") from exc
     # The declaration itself must belong to the selected workspace.
     preliminary = DeclarationSourceMap("otto.toml", MappingProxyType({(): 1}))
     _inside(root, path, source=preliminary, key=(), label="otto.toml")
