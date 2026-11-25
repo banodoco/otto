@@ -1,0 +1,9 @@
+# OT-14 supplies the synthetic findings.md and local workstream.
+version = 1
+name = "research"
+workstream = "agent/shared/workstreams/research.md#procedure"
+
+[[documents]]
+path = "findings.md"
+source = "findings.md"
+headings = ["Question", "Sources", "Findings", "Next decision"]

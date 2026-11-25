@@ -1,0 +1,40 @@
+version = 1
+id = "strategy"
+
+[[stages]]
+id = "goal"
+kinds = ["goal"]
+
+[[stages]]
+id = "project"
+kinds = ["project"]
+statuses = ["queued", "active", "blocked", "paused", "done", "cancelled"]
+
+[[stages]]
+id = "campaign"
+kinds = ["campaign"]
+optional = true
+
+[[links]]
+relation = "serves"
+from = "project"
+to = "goal"
+per_source = "one-or-more"
+per_target = "any"
+
+[links.by_role.primary]
+per_source = "exactly-one"
+per_target = "any"
+
+[links.by_role.supporting]
+per_source = "any"
+per_target = "any"
+
+[[links]]
+relation = "includes"
+from = "campaign"
+to = "project"
+# A campaign that exists must include a project.
+per_source = "one-or-more"
+# Campaign is optional: projects count campaigns with an effective minimum of 0.
+per_target = "one-or-more"

@@ -1,0 +1,105 @@
+# Synthetic declaration specimen only; no production workspace data.
+version = 1
+
+[otto]
+commit = "ef946b9d291bceb9eab1271a44e15c3d54918234"
+
+[workspace]
+name = "demo-marketing"
+skill_namespace = "demo-marketing-"
+
+[paths]
+strategy = "."
+projects = "projects"
+campaigns = "campaigns"
+issues = "issues"
+ideas = "ideas"
+agent = "agent"
+skills_output = ".generated/skills"
+pipelines = "pipelines"
+templates = "templates"
+
+[ids.goal]
+policy = "slug"
+source = "adapter"
+
+[ids.project]
+policy = "slug"
+source = "parent"
+
+[ids.campaign]
+policy = "slug"
+source = "stem"
+
+[ids.issue]
+policy = "slug"
+source = "stem"
+
+[ids.idea]
+policy = "slug"
+source = "stem"
+
+[[record_kinds]]
+name = "goal"
+root = "strategy"
+files = ["strategy.md"]
+reader = "adapter"
+
+[[record_kinds]]
+name = "project"
+root = "projects"
+files = ["*/plan.md"]
+reader = "headers"
+pack = true
+
+[[record_kinds]]
+name = "campaign"
+root = "campaigns"
+files = ["*.md"]
+reader = "headers"
+
+[[record_kinds]]
+name = "issue"
+root = "issues"
+files = ["*.md"]
+reader = "headers"
+
+[[record_kinds]]
+name = "idea"
+root = "ideas"
+files = ["*.md"]
+reader = "frontmatter"
+
+[[relation_kinds]]
+name = "serves"
+sources = ["project"]
+targets = ["goal"]
+roles = ["primary", "supporting"]
+per_source = "any"
+per_target = "any"
+
+[[relation_kinds]]
+name = "includes"
+sources = ["campaign"]
+targets = ["project"]
+roles = ["included"]
+per_source = "any"
+per_target = "any"
+
+[[relation_kinds]]
+name = "routes-to"
+sources = ["issue", "idea"]
+targets = ["project"]
+roles = ["primary", "supporting"]
+per_source = "any"
+per_target = "any"
+
+[adapters]
+module = "scripts/workspace.py"
+records = "load_strategy_goals"
+
+[checks]
+register = "register_checks"
+
+[views]
+register = "register_views"

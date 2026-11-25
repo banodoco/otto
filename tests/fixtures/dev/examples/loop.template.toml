@@ -1,0 +1,11 @@
+# Package-manifest specimen; OT-12 places it at templates/loop/template.toml
+# beside the rounds.md source. This file is outside workspace discovery.
+version = 1
+name = "loop"
+workstream = "guidance/workstreams/iterate.md#procedure"
+
+[[documents]]
+path = "rounds.md"
+source = "rounds.md"
+headings = ["Baseline", "Method", "Stop rule", "Rounds"]
+task_reference_field = "Standing task"

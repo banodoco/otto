@@ -1,0 +1,6 @@
+# Package-manifest specimen; OT-12 places it at templates/standard/template.toml.
+# This examples/ file is outside workspace template discovery.
+version = 1
+name = "standard"
+workstream = "guidance/workstreams/plan.md#procedure"
+documents = []

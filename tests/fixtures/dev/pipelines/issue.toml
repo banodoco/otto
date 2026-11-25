@@ -1,0 +1,17 @@
+version = 1
+id = "issue"
+
+[[stages]]
+id = "issue"
+kinds = ["issue"]
+
+[[stages]]
+id = "release"
+kinds = ["release"]
+
+[[links]]
+relation = "listed-in"
+from = "issue"
+to = "release"
+per_source = "any"
+per_target = "any"
