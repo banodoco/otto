@@ -828,7 +828,7 @@ b.build_packages(root, CONFIG)
             with self.assertRaisesRegex(OSError, "unsupported"):
                 build_packages(self.root, CONFIG)
         self.assertEqual(skill.read_bytes(), before)
-        lock = output.parent / ".skills-build.lock"
+        lock = output.parent / ".astrid-dev-skills-build.lock"
         lock.write_text("foreign lock")
         with self.assertRaisesRegex(ValueError, "foreign skill build lock"):
             build_packages(self.root, CONFIG)
@@ -881,7 +881,7 @@ b.build_packages(root, CONFIG)
             with self.assertRaisesRegex(OSError, "unsupported"):
                 build_packages(self.root, CONFIG)
         self.assertFalse(output.exists())
-        lock = output.parent / ".skills-build.lock"
+        lock = output.parent / ".astrid-dev-skills-build.lock"
         lock.unlink()
         with TemporaryDirectory() as temp:
             foreign = Path(temp) / "foreign"
@@ -966,7 +966,7 @@ with b._build_lock(Path(sys.argv[1]), CONFIG):
         result = subprocess.run([sys.executable, "-c", child, str(parent)],
                                 cwd=Path(__file__).resolve().parents[2], check=False)
         self.assertEqual(result.returncode, 73)
-        self.assertEqual((parent / ".skills-build.lock").stat().st_nlink, 2)
+        self.assertEqual((parent / ".astrid-dev-skills-build.lock").stat().st_nlink, 2)
         build_packages(self.root, CONFIG)
         self.assertEqual(check_packages(self.root, CONFIG), [])
 
