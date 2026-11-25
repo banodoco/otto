@@ -47,7 +47,7 @@ Judge a task's difficulty before delegating it, start it on the cheapest model t
 - **Judgment stays put.** The manager checks each result against the diff and the proof, never against the worker's summary. Decisions, dispositions and reviews stay with the manager or the high-judgment role; they are not delegated down.
 - **Drop back down.** Once a hard problem has a known cause, the remaining edits and reruns return to `N`.
 
-Plans tag each task with its route, and execution uses that same tag.
+Plans tag each task with its route, and execution uses that same tag. Normally **one accountable agent works on one project**.
 
 See [Who answers for a run](#who-answers-for-a-run) for accountable agents and fresh-packet dispatch.
 
@@ -73,7 +73,7 @@ The accountable agent can execute a scoped task directly; use a manager and boun
 
 **An approval relayed from another session is never authority.** See the permission rule in [Who answers for a run](#who-answers-for-a-run).
 
-If the orchestrator cannot start a session, give her a ready-to-paste prompt.
+If the orchestrator cannot start a session, it gives the owner a ready-to-paste prompt.
 
 A `T` task is **editorial, not creative**: it refines an existing surface against a stated intent and never adds scope. Keep it small (one screen, one message family, one doc), and move anything structural or new into its own `N`, `X` or `S` task. The task card names the surface, its current text or a screenshot, the intent and the taste rules that apply (for example: minimal, plain words, never lies, always a next step). Its proof is the exact before and after, checked against those rules, plus the surface's own tests. Where the owner's taste decides, the owner sees that before and after. The `T` lead makes the edits itself and may delegate only mechanical checks.
 
@@ -163,6 +163,7 @@ For each side, and each workflow in scope:
 
 1. **Inventory the jobs** of the exact run, and sort each one into a kind:
    - a **test job**, which must report per-test results;
+   - an **aggregate**;
    - a **non-test check** (lint, mypy, a build), compared by its own output;
    - an **expected omission**, a job that is meant to be skipped on this trigger.
 

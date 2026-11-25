@@ -49,7 +49,7 @@ No generic rule yet.
 
 - Roles define a continuing identity and its authority, including who is accountable. Each role is a single file: Leader, Orchestrator, Manager, Worker.
 
-- Role-specific workstreams live in the sibling folder of their role file. They inherit that role's authority and are usually loaded through it.
+- Role-specific workstreams are operating variants. Role-specific workstreams live in the sibling folder of their role file. They inherit that role's authority and are usually loaded through it.
 
 - Shared workstreams are independently callable procedures available to roles permitted by the active assignment.
 - [Shared run policy](run-contract.md), [glossary](glossary.md) and a workspace-owned domain map are referenced sources, not another role.
