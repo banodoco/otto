@@ -49,8 +49,7 @@ class CliTests(unittest.TestCase):
         self.assert_stub("pipeline", "show")
 
     def test_version(self):
-        self.assertEqual(__version__, "0.0.0")
-        self.assertEqual(self.invoke("--version"), (0, "otto 0.0.0\n", ""))
+        self.assertEqual(self.invoke("--version"), (0, f"otto {__version__}\n", ""))
 
     def test_list_without_workspace(self):
         with tempfile.TemporaryDirectory() as directory:
