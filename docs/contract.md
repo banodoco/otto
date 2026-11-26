@@ -689,10 +689,6 @@ These messages are approved for the cases OT-11 met. Where a generic field-speci
 | Topology including nonadjacent/self link | Existing `pipeline <id> requires exactly one link between adjacent stages <a> and <b>`; actual display-ordered endpoint names for nonadjacent/self links |
 | Impossible effective role/total intervals | Existing `pipeline <id> has incompatible bounds for <relation> at <end>` |
 
-All other specific messages in section 11 retained. Every new message above was approved or is a reuse of an existing contract message, as specified by the decision.
-
-Adjacent edits: none. No private data or secrets. No clone/build/tests/CI dispatch, merge or tasks.md edits. Proof selector: tests; orchestrator executes it.
-
 ## 18. Approved wording for pipeline conformance refusals section 11 does not list (OT-10)
 
 | Case | Body |
