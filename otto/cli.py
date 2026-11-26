@@ -3,6 +3,7 @@
 import argparse
 from pathlib import Path
 import sys
+import subprocess
 
 from . import __version__, checks, views
 from .config import load_workspace
@@ -109,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
         workspace = load_workspace(args.root)
         return _dispatch(args, workspace)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 
