@@ -692,3 +692,14 @@ These messages are approved for the cases OT-11 met. Where a generic field-speci
 All other specific messages in section 11 retained. Every new message above was approved or is a reuse of an existing contract message, as specified by the decision.
 
 Adjacent edits: none. No private data or secrets. No clone/build/tests/CI dispatch, merge or tasks.md edits. Proof selector: tests; orchestrator executes it.
+
+## 18. Approved wording for pipeline conformance refusals section 11 does not list (OT-10)
+
+| Case | Body |
+| --- | --- |
+| Outgoing total or role degree | `pipeline <id>: <ref> has <n> [<role> ]<relation> targets; expected <token>` |
+| Incoming total or role degree | `pipeline <id>: <ref> has <n> [<role> ]incoming <relation> sources; expected <token>` |
+| Zero admitted neighbors with positive total or role minimum | `pipeline <id>: <ref> has no required <opposite-stage-id> through <relation>` |
+| Narrower target stage rejects a globally valid endpoint | `pipeline <id>: <relation> target <ref> is not allowed in stage <to-stage-id>` |
+| Status restrictions (generalized section 11) | `pipeline <id>: <ref> status <repr(status)> is not allowed in stage <stage-id>`; `pipeline <id>: <ref> has no status for stage <stage-id>` |
+
