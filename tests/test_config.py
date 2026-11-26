@@ -453,7 +453,8 @@ source = "stem"
                 with self.subTest(name=name, bad=bad):
                     self.adapter("def records(workspace): return None\n"
                                  f"def {other}(workspace): return ()\n" + bad)
-                    expected = (f'otto.toml:{self.at(text, f"register = {chr(34)}{name}{chr(34)}")}: '
+                    line = self.at(text, f'register = "{name}"')
+                    expected = (f"otto.toml:{line}: "
                                 f"adapter export '{name}' is missing or not callable")
                     with self.assertRaises(LocatedError) as eager:
                         load_workspace(self.root)
