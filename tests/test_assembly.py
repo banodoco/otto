@@ -101,6 +101,12 @@ class AssemblyTests(unittest.TestCase):
             ("from otto.checks import Check\n"
              "def register_checks(w): return (Check('example','bad','Local',lambda c: []),)\n",
              "check trigger must be always or pr"),
+            ("from otto.checks import Check\n"
+             "def register_checks(w): return (Check(1,'always','Local',lambda c: []),)\n",
+             "check id must be a nonempty token"),
+            ("from otto.checks import Check\n"
+             "def register_checks(w): return (Check('example','always',1,lambda c: []),)\n",
+             "check description must be one nonempty line"),
             ("def register_checks(w): raise RuntimeError('fixture failure')\n",
              "cannot load adapter adapter.py: fixture failure"),
             ("register_checks = None\n",
@@ -271,6 +277,18 @@ def register_views(workspace):
         self.assertNotIn("ERROR pipeline-conformance:", output)
         self.assertIn("ERROR example-local: strategy.md:1: local finding\n", output)
         self.assertEqual(output.count("names unknown goal:missing"), 1)
+
+    def test_pack_and_pipeline_findings_remain_independent_on_valid_graph(self):
+        self.graph_fixture()
+        path = "projects/launch-note/plan.md"
+        original = (self.root / path).read_text()
+        self.write(path, original.replace("**Status:** queued", "**Status:** unsupported\n**Template:** missing"))
+        status, output, stderr = self.invoke("check")
+        self.assertEqual((status, stderr), (1, ""))
+        self.assertIn(f"ERROR pack-shape: {path}:4: unknown project template 'missing'\n", output)
+        self.assertIn(f"ERROR pipeline-conformance: {path}:3: pipeline strategy: "
+                      "project:launch-note status 'unsupported' is not allowed in stage project\n", output)
+        self.assertNotIn("ERROR relationship-validity:", output)
 
     def test_record_read_failure_reported_once(self):
         self.graph_fixture()
