@@ -108,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
             except FileNotFoundError:
                 print("no otto.toml found", file=sys.stderr)
                 return 0
-        workspace = load_workspace(args.root)
+        workspace = load_workspace(args.root, validate_registrations=False)
         return _dispatch(args, workspace)
     except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
         print(str(exc), file=sys.stderr)
