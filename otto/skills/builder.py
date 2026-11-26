@@ -302,14 +302,18 @@ def _rewrite_links(source: AgentDocument, root: Path) -> str:
     return "".join(lines)
 
 
-def render_skill(doc: AgentDocument, root: Path) -> str:
+def render_skill(doc: AgentDocument, root: Path, *, config: SkillConfig | None = None) -> str:
     if not doc.skill or doc.skill_name is None:
         raise ValueError(f"{doc.relative}: not opted in as a skill")
     content = _rewrite_links(doc, Path(root).resolve())
+    header = ""
+    if config is not None and config.generated_header is not None:
+        source = (config.source_root / doc.relative).as_posix()
+        header = config.generated_header.replace("{source}", source) + "\n\n"
     return ("---\n"
             f"name: {doc.skill_name}\n"
             f"description: {json.dumps(doc.description, ensure_ascii=False)}\n"
-            "---\n\n" + content.lstrip("\n").rstrip("\n") + "\n")
+            "---\n\n" + header + content.lstrip("\n").rstrip("\n") + "\n")
 
 
 def expected_packages(root: Path, config: SkillConfig) -> dict[str, tuple[str, str]]:
@@ -318,7 +322,7 @@ def expected_packages(root: Path, config: SkillConfig) -> dict[str, tuple[str, s
     for doc in discover_documents(root, config):
         if doc.skill:
             result[doc.skill_name] = (
-                render_skill(doc, root),
+                render_skill(doc, root, config=config),
                 (config.source_root / doc.relative).as_posix() + "\n",
             )
     return dict(sorted(result.items()))
