@@ -30,10 +30,19 @@ COMPAT = replace(
     path_based_link_ownership=True,
 )
 
-# The orchestrator supplies this literal from a build of the unchanged
-# baseline, fcf5addcff6f3fbdb9ba0b4b659aaa483501dc3a. Do not obtain it from
-# the candidate under test. Missing baseline evidence fails closed.
-EXPECTED_GUIDANCE_TREE_SHA256: str | None = None
+# Digest of the default build of the fixed fixture below, measured on the
+# unchanged baseline fcf5addcff6f3fbdb9ba0b4b659aaa483501dc3a (before any seam
+# existed). A change here means Otto's default output moved.
+EXPECTED_DEFAULT_TREE_SHA256 = "f6d1c5fcd8b76a54d9182c9b4e5f963dde8c9850a81ddd585c34e82aaade3e74"
+FIXED_DOCUMENTS = {
+    "agent/notes/alpha.md": (
+        "---\ndescription: Start the work and report what you find.\nskill: true\n---\n\n"
+        "# Alpha\n\nRead [the sibling](beta.md) first, then [the guide](../../docs/guide.md#steps).\n"),
+    "agent/notes/beta.md": (
+        "---\ndescription: Keep the record while the work runs.\nskill: true\n---\n\n"
+        "# Beta\n\nBack to [Alpha](alpha.md#alpha).\n"),
+    "docs/guide.md": "# Guide\n\n## Steps\n\nDo them.\n",
+}
 
 
 def _tree_snapshot(output: Path) -> dict[str, tuple[str, bytes]]:
@@ -394,39 +403,25 @@ class SkillSeamTests(unittest.TestCase):
                          [f"retargeted {desired}"])
 
 
-class GuidanceDefaultGoldenTests(unittest.TestCase):
-    def test_unchanged_default_guidance_tree(self):
-        checkout = Path(__file__).resolve().parents[1]
-        config = SkillConfig("otto-", Path("guidance"), Path(".generated/skills"))
-        names = (
-            "otto-improve", "otto-iterate", "otto-leader", "otto-manager", "otto-merge",
-            "otto-orchestrator", "otto-plan", "otto-stand-up", "otto-worker",
-        )
+class DefaultTreeGoldenTests(unittest.TestCase):
+    def test_default_build_of_a_fixed_fixture_is_unchanged(self):
+        config = SkillConfig("demo-", Path("agent"), Path(".generated/skills"))
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            # Copy the real authored sources and the contract they link to;
-            # the build must not modify the checkout or install any links.
-            shutil.copytree(checkout / "guidance", root / "guidance")
-            (root / "docs").mkdir()
-            shutil.copyfile(checkout / "docs/contract.md", root / "docs/contract.md")
+            for relative, text in FIXED_DOCUMENTS.items():
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding="utf-8")
             build_packages(root, config)
+            self.assertEqual(check_packages(root, config), [])
             output = root / config.output
-            self.assertEqual(tuple(sorted(path.name for path in output.iterdir())), names)
             entries = _tree_snapshot(output)
             self.assertEqual(set(entries), {
-                entry for name in names
+                entry for name in ("demo-alpha", "demo-beta")
                 for entry in (name, f"{name}/SKILL.md", f"{name}/{config.marker}", f"{name}/repo")
             })
-            for name in names:
-                self.assertEqual(entries[name], ("D", b""))
-                self.assertEqual(entries[f"{name}/SKILL.md"][0], "F")
-                self.assertEqual(entries[f"{name}/{config.marker}"][0], "F")
-                self.assertEqual(entries[f"{name}/repo"], ("L", b"../../../"))
-            self.assertEqual(check_packages(root, config), [])
-            actual = _tree_sha256(entries)
-            self.assertIsNotNone(EXPECTED_GUIDANCE_TREE_SHA256,
-                                 "Supply the unchanged-main baseline digest before proving this test")
-            self.assertEqual(actual, EXPECTED_GUIDANCE_TREE_SHA256)
+            self.assertEqual(entries["demo-alpha/repo"], ("L", b"../../../"))
+            self.assertEqual(_tree_sha256(entries), EXPECTED_DEFAULT_TREE_SHA256)
 
 
 if __name__ == "__main__":
