@@ -1,4 +1,4 @@
-"""Tests for the initial Otto command-line contract."""
+"""Tests for the Otto command-line contract."""
 
 from contextlib import redirect_stderr, redirect_stdout
 import io
@@ -21,32 +21,51 @@ class CliTests(unittest.TestCase):
                 status = exc.code
         return status, stdout.getvalue(), stderr.getvalue()
 
-    def assert_stub(self, *args):
-        self.assertEqual(
-            self.invoke(*args),
-            (2, "", f"not implemented yet: {' '.join(args)}\n"),
-        )
+    def workspace(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        (root / "otto.toml").write_text(
+            'version = 1\n[workspace]\nname = "example"\nskill_namespace = "example-"\n',
+            encoding="utf-8")
+        return root
+
+    def in_workspace(self, root, *args):
+        return self.invoke("--root", str(root), *args)
 
     def test_check(self):
-        self.assert_stub("check")
+        self.assertEqual(self.in_workspace(self.workspace(), "check"), (0, "", ""))
 
     def test_views_generate(self):
-        self.assert_stub("views", "generate")
+        self.assertEqual(self.in_workspace(self.workspace(), "views", "generate"), (0, "", ""))
 
     def test_skills_build(self):
-        self.assert_stub("skills", "build")
+        root = self.workspace()
+        self.assertEqual(self.in_workspace(root, "skills", "build"), (0, "", ""))
+        self.assertTrue((root / ".generated/skills").is_dir())
 
     def test_skills_check(self):
-        self.assert_stub("skills", "check")
+        self.assertEqual(self.in_workspace(self.workspace(), "skills", "check"), (0, "", ""))
 
     def test_skills_install(self):
-        self.assert_stub("skills", "install")
+        root = self.workspace()
+        destination = root / "destination"
+        destination.mkdir()
+        (root / ".generated/skills").mkdir(parents=True)
+        self.assertEqual(self.in_workspace(root, "skills", "install", "--destination",
+                                           str(destination)), (0, "", ""))
+        self.assertEqual(list(destination.iterdir()), [])
 
     def test_pipeline_list(self):
-        self.assert_stub("pipeline", "list")
+        self.assertEqual(self.in_workspace(self.workspace(), "pipeline", "list"), (0, "", ""))
 
     def test_pipeline_show(self):
-        self.assert_stub("pipeline", "show")
+        root = self.workspace()
+        self.assertEqual(self.in_workspace(root, "pipeline", "show", "missing", "record"),
+                         (1, "", "unknown pipeline 'missing'\n"))
+        status, stdout, stderr = self.in_workspace(root, "pipeline", "show", "missing")
+        self.assertEqual((status, stdout), (2, ""))
+        self.assertIn("record", stderr)
 
     def test_version(self):
         self.assertEqual(self.invoke("--version"), (0, f"otto {__version__}\n", ""))
@@ -61,14 +80,24 @@ class CliTests(unittest.TestCase):
                 os.chdir(original)
 
     def test_list_with_workspace(self):
-        with tempfile.TemporaryDirectory() as directory:
-            original = Path.cwd()
-            try:
-                os.chdir(directory)
-                Path("otto.toml").write_text("", encoding="utf-8")
-                self.assertEqual(self.invoke("list"), (0, "", ""))
-            finally:
-                os.chdir(original)
+        root = self.workspace()
+        self.assertEqual(self.in_workspace(root, "list"), (
+            0,
+            "markdown-links always Check relative Markdown links\n"
+            "link-anchors always Check relative Markdown headings\n"
+            "pack-shape always Check pack shape and templates\n"
+            "relationship-validity always Check declared relationships\n"
+            "pipeline-conformance always Check declared pipeline constraints\n"
+            "skill-packages-current always Check generated skill packages\n"
+            "generated-views always Check generated views\n",
+            ""))
+
+    def test_malformed_toml_fails_closed(self):
+        root = self.workspace()
+        (root / "otto.toml").write_text("version = [\n", encoding="utf-8")
+        status, stdout, stderr = self.in_workspace(root, "list")
+        self.assertEqual((status, stdout), (1, ""))
+        self.assertIn("otto.toml:", stderr)
 
     def test_help_names_every_command(self):
         status, stdout, stderr = self.invoke("--help")
