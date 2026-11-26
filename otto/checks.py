@@ -27,11 +27,12 @@ class Check:
     run: Callable[[Context], list[str]]
 
     def __post_init__(self):
-        if not self.id or any(c.isspace() for c in self.id):
+        if not isinstance(self.id, str) or not self.id or any(c.isspace() for c in self.id):
             raise ValueError("check id must be a nonempty token")
         if self.trigger not in ("always", "pr"):
             raise ValueError("check trigger must be always or pr")
-        if not self.description.strip() or "\n" in self.description or "\r" in self.description:
+        if (not isinstance(self.description, str) or not self.description.strip()
+                or "\n" in self.description or "\r" in self.description):
             raise ValueError("check description must be one nonempty line")
         if not callable(self.run):
             raise ValueError("check must be callable")
