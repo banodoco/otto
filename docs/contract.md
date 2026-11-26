@@ -390,6 +390,16 @@ The existing `public-vision`, root summaries, catalog, lifecycle, check-catalog,
 | `skill_installer.CommittedRetargetCleanupError, PartialInstallationError, default_destinations, _target_of, _identity, _retarget_owned_link` | `otto/skills/installer.py`, parameterized namespace/staging |
 | `skill_installer._owned_link, install_packages` | Split: generic current-namespace, exact owned-generation link handling in Otto; legacy Dev `skills/` links and special `astrid-dev`/`shared` names stay in a named Dev migration helper |
 
+The split is carried by opt-in `SkillConfig` settings (P95-06b), all keyword-only and all off by default, so a default workspace keeps the strict namespace rules and its output is unchanged:
+
+| Setting | Effect when set |
+| --- | --- |
+| `generated_header` | One printable line with exactly one `{source}` placeholder. `render_skill` writes it after the frontmatter, then a blank line, then the body. Unset: no header. Otto supplies no wording |
+| `lock_name_override`, `lock_stage_prefix_override`, `probe_stage_prefix_override`, `build_stage_prefix_override` | Replace the namespace-derived lock file name and the three scratch prefixes. Lock content and the install stage prefix are unchanged |
+| `legacy_owned_dirs`, `legacy_retire_names`, `path_based_link_ownership` | With path-based ownership on, a symlink is owned when its resolved target lies under the output directory or a listed legacy directory, with no namespace or marker rule; the named legacy names join the namespace-prefixed names as retirement candidates. The root is resolved by the installer; legacy directories are not resolved, so a symlinked legacy directory cannot grant ownership outside the checkout. Everything else in the installer (the all-destination preflight, publication before retirement, dry run, partial-failure reporting) is the one code path |
+
+The Dev workspace supplies its values from its own wrapper; no Dev wording is in Otto.
+
 No namespace can retire the other's packages. A matching prefix alone does not prove ownership. No Otto installer special-case names Dev's old packages. Real installation still needs its existing authorization; OT-4 config selects no destinations and runs no installation. Guidance content/role-rule moves are OT-15 through OT-21's map, not implicitly moved by this code map.
 
 ### Delivery adapters and supporting modules
