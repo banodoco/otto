@@ -1,0 +1,11 @@
+version = 1
+
+[workspace]
+name = "demo-blank"
+skill_namespace = "demo-blank-"
+
+[paths]
+agent = "agent"
+skills_output = ".generated/skills"
+pipelines = "pipelines"
+templates = "templates"
