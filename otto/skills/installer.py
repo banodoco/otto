@@ -44,10 +44,18 @@ def _target_of(link: Path) -> Path:
 
 
 def _owned_link(link: Path, root: Path, config: SkillConfig) -> bool:
-    if not link.is_symlink() or not link.name.startswith(config.namespace):
+    if not link.is_symlink():
+        return False
+    if not config.path_based_link_ownership and not link.name.startswith(config.namespace):
         return False
     target = _target_of(link)
     output = root / config.output
+    if config.path_based_link_ownership:
+        # root and the target are resolved by the caller and _target_of.
+        # Do not resolve legacy roots: a symlinked root must not grant
+        # ownership of a target outside the checkout.
+        return (target.is_relative_to(output)
+                or any(target.is_relative_to(root / path) for path in config.legacy_owned_dirs))
     if target.parent != output or not target.name.startswith(config.namespace):
         return False
     if not target.exists():
@@ -111,8 +119,10 @@ def install_packages(root: Path, config: SkillConfig, destinations: list[Path] |
                      *, dry_run: bool = False) -> list[str]:
     """Link named packages; never replace other repositories' files or links.
 
-    Only this workspace's generated packages and exact former generated
-    targets are owned. This is not a general cleanup tool.
+    By default only this workspace's marked packages and exact former
+    generated targets are owned. A workspace can opt into path-based legacy
+    ownership and explicitly named retirement candidates. This is not a
+    general cleanup tool.
     """
     root = Path(root).resolve()
     failures = check_packages(root, config)
@@ -138,7 +148,8 @@ def install_packages(root: Path, config: SkillConfig, destinations: list[Path] |
             raise ValueError(f"duplicate skill destination: {target}")
         target_identities[canonical] = (target, _identity(target))
         for item in sorted(target.iterdir()):
-            if item.name in desired or not item.name.startswith(config.namespace):
+            if (item.name in desired or (not item.name.startswith(config.namespace)
+                                        and item.name not in config.legacy_retire_names)):
                 continue
             if _owned_link(item, root, config):
                 planned.append(("retire", item, None, _identity(item)))
