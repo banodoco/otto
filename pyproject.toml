@@ -14,8 +14,23 @@ dependencies = []
 [project.scripts]
 otto = "otto.cli:main"
 
-[tool.setuptools.packages.find]
-include = ["otto", "otto.*"]
+[tool.setuptools]
+# The authored resource tree stays at the checkout root. Install only the
+# listed data under the distribution's own namespace, not site-packages root.
+packages = ["otto", "otto.skills", "otto._assets"]
+include-package-data = false
+
+[tool.setuptools.package-dir]
+"otto._assets" = "."
+
+[tool.setuptools.package-data]
+"otto._assets" = [
+    "templates/*/*.toml",
+    "templates/*/*.md",
+    "guidance/*.md",
+    "guidance/*/*.md",
+    "docs/contract.md",
+]
 
 [tool.setuptools.dynamic]
 version = {attr = "otto.__version__"}

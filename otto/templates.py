@@ -18,6 +18,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import tomllib
 from types import MappingProxyType
 from typing import Iterable, Mapping
 
@@ -29,7 +30,29 @@ from .ids import LocatedError, RecordRef, SourceLocation, identity_from_path
 from .records import Record, RecordBatch, _live_lines, _read_source, load_records
 
 
-PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+def _resource_root(module_file: Path) -> Path:
+    """Use installed assets, or the authored tree of an Otto checkout."""
+    package = module_file.resolve().parent
+    installed = package / "_assets"
+    if installed.exists() or installed.is_symlink():
+        return installed
+
+    # Never fall back to the working directory or to unrelated templates
+    # and guidance alongside a package in site-packages.
+    checkout = package.parent
+    try:
+        with (checkout / "pyproject.toml").open("rb") as stream:
+            project = tomllib.load(stream).get("project")
+    except (OSError, ValueError):
+        return installed
+    if isinstance(project, dict) and project.get("name") == "banodoco-otto":
+        return checkout
+    # Missing installed resources stay missing; the existing readers
+    # diagnose them rather than consulting another distribution's data.
+    return installed
+
+
+PACKAGE_ROOT = _resource_root(Path(__file__))
 COMMON = ("plan.md", "inputs.md", "tasks.md")
 NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 TASK_ID = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:[.-][A-Za-z0-9]+)*")
