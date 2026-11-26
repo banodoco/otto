@@ -680,7 +680,7 @@ class _Validator:
             sources[kind.name] = tuple(sorted(matches))
         return MappingProxyType(sources)
 
-    def validate(self) -> Workspace:
+    def validate(self, *, validate_registrations=True) -> Workspace:
         data = self.table(self.data, (), {
             "version", "otto", "workspace", "paths", "ids", "record_kinds",
             "relation_kinds", "adapters", "checks", "views"}, ("version", "workspace"))
@@ -713,9 +713,9 @@ class _Validator:
         result = Workspace(self.root, config, self.source, sources, module)
         if adapters and adapters.records:
             result.export(adapters.records, declaration=("adapters", "records"))
-        if checks:
+        if validate_registrations and checks:
             result.export(checks.register, declaration=("checks", "register"))
-        if views:
+        if validate_registrations and views:
             result.export(views.register, declaration=("views", "register"))
         return result
 
@@ -813,7 +813,7 @@ def _load_adapter(root: Path, path: Path, declared: str,
     return module
 
 
-def load_workspace(root: Path | str) -> Workspace:
+def load_workspace(root: Path | str, *, validate_registrations=True) -> Workspace:
     """Select exactly this root; validate the declaration and its contained inputs."""
     root = Path(root)
     try:
@@ -834,4 +834,4 @@ def load_workspace(root: Path | str) -> Workspace:
     preliminary = DeclarationSourceMap("otto.toml", MappingProxyType({(): 1}))
     _inside(root, path, source=preliminary, key=(), label="otto.toml")
     data, source = read_declaration(path, display_path="otto.toml")
-    return _Validator(root, data, source).validate()
+    return _Validator(root, data, source).validate(validate_registrations=validate_registrations)

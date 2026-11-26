@@ -1,5 +1,5 @@
 """Declared generated views, their sources, and stale-view diagnostics."""
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 import subprocess
 import os
@@ -120,14 +120,15 @@ def touched(view: View, root: Path, base: str) -> bool:
     return baseline_content is None or baseline_content != current_content
 
 
-def check_view(view: View, root: Path, hint: str = "regenerate the view") -> list[str]:
+def check_view(view: View, root: Path, hint: str = "regenerate the view", *,
+               generic: bool = False) -> list[str]:
     try:
         actual = (root / view.target).read_text(encoding="utf-8")
         wanted = expected(view, root)
         if actual != wanted:
             return [f"view {view.name}: the generated part of {view.target} does not match its sources; "
-                    f"edit {', '.join(view.sources)} instead and undo your change to that part; "
-                    f"it refreshes itself on main after merge"]
+                    f"edit {', '.join(view.sources)} instead and undo your change to that part; " +
+                    (f"then {hint}" if generic else "it refreshes itself on main after merge")]
     except ValueError as exc:
         detail = str(exc).removeprefix(f"view {view.name}: ")
         return [f"view {view.name}: cannot check {view.target}: {detail}; "
@@ -144,11 +145,7 @@ def check(root: Path, declarations=()) -> list[str]:
     return [*errors, *(message for view in declared for message in check_view(view, root))]
 
 
-def sync(root: Path, declarations=()) -> list[str]:
-    root = root.resolve()
-    declared, errors = views_for(root, declarations)
-    if errors:
-        raise ValueError("shared blocks: " + "; ".join(errors))
+def _safe_targets(root: Path, declared) -> list[Path]:
     targets = []
     for view in declared:
         target_name = Path(view.target)
@@ -163,6 +160,16 @@ def sync(root: Path, declarations=()) -> list[str]:
         if not target.resolve().is_relative_to(root):
             raise ValueError(f"view {view.name}: target outside repository: {view.target}")
         targets.append(target)
+
+    return targets
+
+
+def sync(root: Path, declarations=()) -> list[str]:
+    root = root.resolve()
+    declared, errors = views_for(root, declarations)
+    if errors:
+        raise ValueError("shared blocks: " + "; ".join(errors))
+    targets = _safe_targets(root, declared)
 
     changed = []
     changed_targets = set()
@@ -246,3 +253,61 @@ def _render_block(root: Path, name: str, owner: str, target: str) -> str:
 def views_for(root: Path, declarations=()) -> tuple[tuple[View, ...], list[str]]:
     """Return the workspace-provided view declarations."""
     return tuple(declarations), []
+
+
+def _index_parts(text: str, target: str, region: str) -> tuple[str, str]:
+    start, end = f"<!-- {region}:start -->", f"<!-- {region}:end -->"
+    if text.count(start) != 1 or text.count(end) != 1 or text.index(start) > text.index(end):
+        raise ValueError(f"{target}: expected exactly one ordered {start} and {end} pair")
+    before, rest = text.split(start, 1)
+    _, after = rest.split(end, 1)
+    return before, after
+
+
+def load_views(workspace) -> tuple[tuple[View, ...], list[str]]:
+    """Resolve the declared factory from the already loaded trusted module."""
+    registration = workspace.config.views
+    if registration is None:
+        return (), []
+    declaration = ("views", "register")
+    error = lambda message: workspace.source_map.error(declaration, message)
+    factory = workspace.export(registration.register, declaration=declaration)
+    try:
+        result = factory(workspace)
+    except Exception as exc:
+        raise error(f"cannot load adapter {workspace.config.adapters.module}: {exc}") from exc
+    invalid = f"adapter export {registration.register!r} returned an invalid view registry"
+    if (not isinstance(result, tuple) or len(result) != 2
+            or not isinstance(result[0], tuple) or not isinstance(result[1], list)
+            or not all(isinstance(message, str) for message in result[1])):
+        raise error(invalid)
+    declared, errors = result
+    names = set()
+    configured = []
+    for view in declared:
+        if (not isinstance(view, View) or not isinstance(view.name, str) or not view.name
+                or not isinstance(view.sources, tuple)
+                or not all(isinstance(source, str) and source for source in view.sources)
+                or not isinstance(view.target, str) or not view.target
+                or not callable(view.render)
+                or (view.region is not None and not isinstance(view.region, str))
+                or (view.marker_prefix is not None and not isinstance(view.marker_prefix, str))):
+            raise error(invalid)
+        if view.name in names:
+            raise error(f"duplicate view name {view.name!r}")
+        names.add(view.name)
+        configured.append(replace(view, marker_prefix=registration.marker_prefix))
+    return tuple(configured), errors
+
+
+def check_registered(workspace, declared, errors) -> list[str]:
+    """Check registered outputs using the same target guard as generation."""
+    if errors:
+        return list(errors)
+    try:
+        _safe_targets(workspace.root, declared)
+    except (OSError, ValueError) as exc:
+        return [str(exc)]
+    hint = workspace.config.views.hint if workspace.config.views else "regenerate the view"
+    return [message for view in declared
+            for message in check_view(view, workspace.root, hint, generic=True)]

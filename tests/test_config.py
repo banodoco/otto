@@ -445,6 +445,35 @@ source = "stem"
         self.adapter("raise RuntimeError('example failure')\n")
         self.refuse(text, self.at(text, "module ="), "cannot load adapter reader.py: example failure")
 
+    def test_registration_exports_can_be_validated_later(self):
+        text = MINIMAL + ADAPTER
+        self.config.write_text(text, encoding="utf-8")
+        for name, other in (("checks", "views"), ("views", "checks")):
+            for bad in ("", f"{name} = None\n"):
+                with self.subTest(name=name, bad=bad):
+                    self.adapter("def records(workspace): return None\n"
+                                 f"def {other}(workspace): return ()\n" + bad)
+                    line = self.at(text, f'register = "{name}"')
+                    expected = (f"otto.toml:{line}: "
+                                f"adapter export '{name}' is missing or not callable")
+                    with self.assertRaises(LocatedError) as eager:
+                        load_workspace(self.root)
+                    self.assertEqual(str(eager.exception), expected)
+                    workspace = load_workspace(self.root, validate_registrations=False)
+                    self.assertTrue(callable(workspace.export(other, declaration=(other, "register"))))
+                    with self.assertRaises(LocatedError) as deferred:
+                        workspace.export(name, declaration=(name, "register"))
+                    self.assertEqual(str(deferred.exception), expected)
+
+    def test_deferred_registration_validation_keeps_records_export_eager(self):
+        text = MINIMAL + ADAPTER
+        self.config.write_text(text, encoding="utf-8")
+        self.adapter("records = None\nchecks = None\nviews = None\n")
+        with self.assertRaises(LocatedError) as raised:
+            load_workspace(self.root, validate_registrations=False)
+        self.assertEqual(str(raised.exception),
+                         f"otto.toml:{self.at(text, 'records =')}: adapter export 'records' is missing or not callable")
+
     def test_unreadable_config_and_inventory(self):
         self.config.write_text(MINIMAL, encoding="utf-8")
         with patch.object(Path, "read_text", side_effect=PermissionError(13, os.strerror(13))):
