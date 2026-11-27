@@ -88,6 +88,21 @@ def markdown_fragment_targets(text: str) -> set[str]:
     def blank(line):
         return not line.strip(" \t")
 
+    def top_level_indented(line):
+        # GFM block indentation is measured in columns, not characters.
+        # Only leading ASCII spaces/tabs count; cell padding does not.
+        column = 0
+        for ch in line:
+            if ch == " ":
+                column += 1
+            elif ch == "\t":
+                column += 4 - column % 4
+            else:
+                break
+            if column >= 4:
+                return True
+        return False
+
     # A reference label may span physical lines, but never an inline
     # block boundary. Escaped brackets are label content; unescaped ones
     # delimit it.
@@ -192,6 +207,10 @@ def markdown_fragment_targets(text: str) -> set[str]:
     table_candidates = {}
     for n in range(1, len(lines)):
         header, separator = lines[n - 1:n + 1]
+        # Reject indented block lines before stripping optional outer pipes
+        # or installing any possible-width or active cell boundaries.
+        if top_level_indented(header) or top_level_indented(separator):
+            continue
         columns = cell_spans(separator)
         width = len(columns)
         if (not pipes(separator) or not width
@@ -438,7 +457,10 @@ def markdown_fragment_targets(text: str) -> set[str]:
                     container_lazy = False
                 after_blank = False
                 fence = opener(line)
-                if fence or indent >= 4 or "\t" in line[:indent] or heading_line.match(line) or rule(line):
+                # Indented code cannot interrupt an open paragraph. A
+                # rejected table delimiter is not itself a block boundary.
+                if (fence or (top_level_indented(line) and not paragraph_open)
+                        or heading_line.match(line) or rule(line)):
                     paragraph_open = False
                     i = next_line
                     continue
