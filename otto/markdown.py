@@ -80,7 +80,10 @@ def markdown_fragment_targets(text: str) -> set[str]:
     container = re.compile(r" {0,3}(>|(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|$))")
     heading_line = re.compile(r" {0,3}#{1,6}(?:[ \t]|$)")
     rule_line = re.compile(r" {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|=+[ \t]*|-+[ \t]*)$")
-    definition = re.compile(r" {0,3}\[(?:\\.|[^\\\]\n])+\]:[ \t]*")
+    # A reference label may span physical lines, but never an inline
+    # block boundary. Escaped brackets are label content; unescaped ones
+    # delimit it.
+    definition = re.compile(r" {0,3}\[(?:\\[^\n]|[^\\\[\]])+\]:[ \t]*")
     tag_start = re.compile(r"</?([a-z][a-z0-9-]*)(?=[ \t\n/>]|$)", re.ASCII | re.I)
     tag = re.compile(r"""</?([a-z][a-z0-9-]*)(?=[ \t\n/>])(?:[^<>"']|"[^"]*"|'[^']*')*>""",
                      re.ASCII | re.I)
@@ -134,33 +137,51 @@ def markdown_fragment_targets(text: str) -> set[str]:
     def pipes(line):
         return [hit.end() - 1 for hit in re.finditer(r"(?<!\\)(?:\\\\)*\|", line)]
 
-    def cells(line):
+    def cell_spans(line):
         points = pipes(line)
-        parts = [line[a + 1:b].strip() for a, b in zip([-1, *points], [*points, len(line)])]
-        if points and not parts[0]:
-            parts.pop(0)
-        if points and parts and not parts[-1]:
-            parts.pop()
-        return parts
+        spans = [(a + 1, b) for a, b in zip([-1, *points], [*points, len(line)])]
+        if points and not line[slice(*spans[0])].strip():
+            spans.pop(0)
+        if points and spans and not line[slice(*spans[-1])].strip():
+            spans.pop()
+        return spans
 
-    # Only treat an actual header/separator pair as a table, not an arbitrary
-    # pipe in an ordinary paragraph or code span.
+    # Only a matching header/separator establishes a table. A body row may
+    # have fewer cells (padded) or more cells (discarded), or no pipe at all.
+    # Retain the rendered width throughout the contiguous table, and skip
+    # surplus cells entirely, including any misleading inline delimiters.
+    discarded = []
+    table_end = 0
     for n in range(1, len(lines)):
-        separator = cells(lines[n])
+        if n - 1 < table_end:
+            continue
         header = lines[n - 1]
-        if (not pipes(lines[n]) or not separator
-                or not all(re.fullmatch(r":?-+:?", part) for part in separator)
-                or not pipes(header) or len(cells(header)) != len(separator)
+        separator = lines[n]
+        columns = cell_spans(separator)
+        width = len(columns)
+        if (not pipes(separator) or not width
+                or not all(re.fullmatch(r":?-+:?", separator[a:b].strip()) for a, b in columns)
+                or len(cell_spans(header)) != width
+                or not header.strip() or opener(header) or container.match(header)
+                or heading_line.match(header) or rule_line.fullmatch(header)
+                or html_interrupt(header) or header.startswith(("    ", "\t"))
                 or (n > 1 and lines[n - 2].strip()
                     and not heading_line.match(lines[n - 2])
                     and not rule_line.fullmatch(lines[n - 2]))):
             continue
         for k in range(n - 1, len(lines)):
             row = lines[k]
-            if not pipes(row) or container.match(row) or opener(row):
+            if k > n and (not row.strip() or container.match(row) or opener(row)
+                          or heading_line.match(row) or rule_line.fullmatch(row)
+                          or html_interrupt(row) or row.startswith(("    ", "\t"))):
                 break
-            cuts.update((starts[k], starts[k] + len(row)))
-            cuts.update(starts[k] + p for p in pipes(row))
+            table_end = k + 1
+            start, end = starts[k], starts[k] + len(row)
+            cuts.update((start, end))
+            cuts.update(start + p for p in pipes(row))
+            spans = cell_spans(row)
+            if len(spans) > width:
+                discarded.append((start + spans[width][0] - 1, end))
     cuts = sorted(cuts)
     runs = {}
     for hit in re.finditer(r"\x60+", text):
@@ -268,7 +289,16 @@ def markdown_fragment_targets(text: str) -> set[str]:
         return active_fence, bool(inner.strip() and not active_fence
                                   and not heading_line.match(inner)
                                   and not rule_line.fullmatch(inner))
+    discard_index = 0
     while i < len(text):
+        while discard_index < len(discarded) and discarded[discard_index][1] <= i:
+            discard_index += 1
+        if discard_index < len(discarded):
+            start, end = discarded[discard_index]
+            if start <= i < end:
+                finish_inline()
+                i = end
+                continue
         if i in by_start:
             line = by_start[i]
             next_line = i + len(line) + 1
@@ -313,9 +343,10 @@ def markdown_fragment_targets(text: str) -> set[str]:
                 if fence or indent >= 4 or "\t" in line[:indent] or heading_line.match(line):
                     i = next_line
                     continue
-                ref = definition.match(line)
+                limit = inline_end(i)
+                ref = definition.match(text, i, limit)
                 if ref:
-                    i = reference_end(i + ref.end(), inline_end(i))
+                    i = reference_end(ref.end(), limit)
                     continue
 
         limit = inline_end(i)
