@@ -359,6 +359,91 @@ class FragmentTargetTests(unittest.TestCase):
                     "target.md": target,
                 }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
 
+    def test_indented_delimiter_cannot_confirm_table_or_split_code(self):
+        for pad in ("    ", "     ", "\t", " \t", "  \t", "   \t", "\t ", "\t\t"):
+            for eol in ("\n", "\r\n"):
+                for width in (1, 2):
+                    for position in ("before", "after", "both"):
+                        with self.subTest(pad=pad, eol=eol, width=width, position=position):
+                            ticks = "\x60" * width
+                            left = GHOST if position in ("before", "both") else "sample"
+                            right = GHOST if position in ("after", "both") else "sample"
+                            target = eol.join((
+                                BEFORE + " before " + ticks + left,
+                                pad + "|---|",
+                                right + " end" + ticks + " after " + AFTER,
+                                "",
+                            ))
+                            self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                            self.assertEqual(findings({
+                                "reference.md": ("[before](target.md#before)\n"
+                                                 "[ghost](target.md#ghost)\n"
+                                                 "[after](target.md#after)\n"),
+                                "target.md": target,
+                            }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_indented_header_does_not_discard_live_prose_targets(self):
+        for pad in ("    ", "\t", " \t", "  \t", "   \t"):
+            for eol in ("\n", "\r\n"):
+                for prefix in ("", "Ordinary paragraph " + anchor("prefix") + eol):
+                    with self.subTest(pad=pad, eol=eol, prefix=bool(prefix)):
+                        target = prefix + eol.join((
+                            pad + "| Header |",
+                            "|---|",
+                            "| " + BEFORE + " | " + AFTER + " |",
+                            "",
+                            "Example \x60" + GHOST + "\x60.",
+                            "",
+                        ))
+                        expected = {"before", "after"} | ({"prefix"} if prefix else set())
+                        self.assertEqual(markdown_fragment_targets(target), expected)
+                        self.assertEqual(findings({
+                            "reference.md": ("[before](target.md#before)\n"
+                                             "[ghost](target.md#ghost)\n"
+                                             "[after](target.md#after)\n"
+                                             + ("[prefix](target.md#prefix)\n" if prefix else "")),
+                            "target.md": target,
+                        }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_valid_table_indentation_preserves_one_column_and_cell_padding(self):
+        for header in ("Header", "| Header |"):
+            for header_indent in range(4):
+                for delimiter_indent in range(4):
+                    for eol in ("\n", "\r\n"):
+                        with self.subTest(header=header, header_indent=header_indent,
+                                          delimiter_indent=delimiter_indent, eol=eol):
+                            target = eol.join((
+                                " " * header_indent + header,
+                                " " * delimiter_indent + "|\t---\t|",
+                                "| " + BEFORE + " | " + GHOST + " |",
+                                "| " + AFTER + " |",
+                                "",
+                            ))
+                            self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                            self.assertEqual(findings({
+                                "reference.md": ("[before](target.md#before)\n"
+                                                 "[ghost](target.md#ghost)\n"
+                                                 "[after](target.md#after)\n"),
+                                "target.md": target,
+                            }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_indented_continuation_is_not_a_new_paragraph(self):
+        for pad in ("    ", "\t", " \t"):
+            with self.subTest(pad=pad):
+                target = ("Ordinary paragraph " + BEFORE + "\n"
+                          + pad + "continued " + AFTER + "\n"
+                          + "Example \x60" + GHOST + "\x60.\n\n"
+                          + pad + anchor("indented-code") + "\n")
+                self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                self.assertEqual(findings({
+                    "reference.md": ("[before](target.md#before)\n"
+                                     "[ghost](target.md#ghost)\n"
+                                     "[after](target.md#after)\n"
+                                     "[indented code](target.md#indented-code)\n"),
+                    "target.md": target,
+                }, located=True), [missing("reference.md", "target.md", "ghost", 2),
+                                   missing("reference.md", "target.md", "indented-code", 4)])
+
     def test_default_scan_and_legacy_filter_diagnostics_are_preserved(self):
         files = {
             "archive/table.md": "# Heading\n\n" + anchor("Exact") + " " + anchor("Exact") + "\n",
