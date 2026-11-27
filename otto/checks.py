@@ -110,10 +110,8 @@ def _body(context):
 
 
 def skill_config(workspace):
-    from .skills import SkillConfig
-    return SkillConfig(workspace.skill_namespace,
-                       workspace.paths["agent"].relative_to(workspace.root),
-                       workspace.paths["skills_output"].relative_to(workspace.root))
+    """Return the workspace's single resolved immutable skill configuration."""
+    return workspace.skill_config
 
 
 def _skill_findings(workspace):
