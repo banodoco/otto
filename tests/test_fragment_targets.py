@@ -170,6 +170,65 @@ class FragmentTargetTests(unittest.TestCase):
                     table().replace(row, "") + "\n\x60\x60\x60html\n" + row + "\n\x60\x60\x60\n"})
                 self.assertEqual(findings(candidate, located=True), expected)
 
+    def test_surplus_table_cells_never_supply_targets(self):
+        cases = {
+            "one column": (
+                "| Header |\n| --- |\n"
+                "| rendered | " + GHOST + " |\n"
+                "| " + BEFORE + " |\n| " + AFTER + " |\n"),
+            "two columns without outer pipes": (
+                "Header | Second\n--- | ---\n"
+                + BEFORE + " | rendered | " + GHOST + "\n"
+                + "short row\n"
+                + "rendered | " + AFTER + " | " + GHOST + "\n"),
+            "escaped pipe is not a column": (
+                "| Header | Second |\n| --- | --- |\n"
+                "| escaped \\| pipe " + BEFORE + " | " + AFTER
+                + " | " + GHOST + " |\n"),
+            "discarded comment cannot hide next rendered row": (
+                "| Header |\n| --- |\n"
+                "| " + BEFORE + " | <!-- " + GHOST + " |\n"
+                "| " + AFTER + " |\n"),
+        }
+        for name, target in cases.items():
+            with self.subTest(name=name):
+                # Ordinary prose after the table is not subject to its width.
+                target += "\nordinary | " + anchor("prose") + "\n"
+                self.assertEqual(markdown_fragment_targets(target),
+                                 {"before", "after", "prose"})
+                self.assertEqual(findings({
+                    "reference.md": ("[before](target.md#before)\n"
+                                     "[ghost](target.md#ghost)\n"
+                                     "[after](target.md#after)\n"
+                                     "[prose](target.md#prose)\n"),
+                    "target.md": target,
+                }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_multiline_reference_definitions_never_supply_targets(self):
+        cases = {
+            "reported multiline label": (
+                "[multiple\nlines]: /real\n  \"title <a id='ghost'></a>\""),
+            "escaped bracket and same-line title": (
+                "[multiple \\]\nlines]: /real '" + GHOST + "'"),
+            "multiline destination and title": (
+                "[multiple\nlines]:\n  /real\n  'title begins\n  "
+                + GHOST + "\n  title ends'"),
+            "parenthesized title": (
+                "[multiple\nlines]: /real\n  (title " + GHOST + ")"),
+        }
+        for name, definition in cases.items():
+            with self.subTest(name=name):
+                # The next plain line is not part of the definition; it and
+                # the preceding ordinary paragraph must remain valid targets.
+                target = BEFORE + "\n\n" + definition + "\n" + AFTER + "\n"
+                self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                self.assertEqual(findings({
+                    "reference.md": ("[before](target.md#before)\n"
+                                     "[ghost](target.md#ghost)\n"
+                                     "[after](target.md#after)\n"),
+                    "target.md": target,
+                }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
     def test_default_scan_and_legacy_filter_diagnostics_are_preserved(self):
         files = {
             "archive/table.md": "# Heading\n\n" + anchor("Exact") + " " + anchor("Exact") + "\n",
