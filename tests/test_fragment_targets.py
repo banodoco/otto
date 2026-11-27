@@ -229,6 +229,61 @@ class FragmentTargetTests(unittest.TestCase):
                     "target.md": target,
                 }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
 
+    def test_table_width_survives_block_transitions_without_blank_line(self):
+        prefixes = {
+            "closed fence": "\x60\x60\x60text\nx\n\x60\x60\x60\n",
+            "closed tilde fence": "~~~~text\nx\n~~~~\n",
+            "closed comment": "<!-- example -->\n",
+            "closed multiline comment": "<!--\nexample\n-->\n",
+            "reference definition": "[example]: /real\n",
+            "multiline reference definition": "[multiple\nlines]: /real\n  \"title\"\n",
+        }
+        for name, prefix in prefixes.items():
+            with self.subTest(name=name):
+                target = (prefix + "| Header |\n| --- |\n"
+                          "| kept | " + GHOST + " |\n"
+                          "| " + BEFORE + " | <!-- discarded comment |\n"
+                          "| " + AFTER + " |\n\n"
+                          "Ordinary | " + anchor("prose") + "\n")
+                self.assertEqual(markdown_fragment_targets(target),
+                                 {"before", "after", "prose"})
+                self.assertEqual(findings({
+                    "reference.md": ("[before](target.md#before)\n"
+                                     "[ghost](target.md#ghost)\n"
+                                     "[after](target.md#after)\n"
+                                     "[prose](target.md#prose)\n"),
+                    "target.md": target,
+                }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_possible_table_does_not_split_an_existing_inline_code_span(self):
+        target = (BEFORE + " example \x60\x60\n"
+                  "| Header |\n| --- |\n"
+                  "| " + GHOST + " | ignored |\n"
+                  "end \x60\x60 " + AFTER + "\n\n"
+                  "Ordinary | " + anchor("prose") + "\n")
+        self.assertEqual(markdown_fragment_targets(target), {"before", "after", "prose"})
+        self.assertEqual(findings({
+            "reference.md": ("[before](target.md#before)\n"
+                             "[ghost](target.md#ghost)\n"
+                             "[after](target.md#after)\n"
+                             "[prose](target.md#prose)\n"),
+            "target.md": target,
+        }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_uncertain_table_width_withholds_only_possible_surplus(self):
+        target = ("Ordinary prose " + BEFORE + "\n"
+                  "| Header |\n| --- |\n"
+                  "| " + AFTER + " | " + GHOST + " |\n\n"
+                  "Ordinary | " + anchor("prose") + "\n")
+        self.assertEqual(markdown_fragment_targets(target), {"before", "after", "prose"})
+        self.assertEqual(findings({
+            "reference.md": ("[before](target.md#before)\n"
+                             "[ghost](target.md#ghost)\n"
+                             "[after](target.md#after)\n"
+                             "[prose](target.md#prose)\n"),
+            "target.md": target,
+        }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
     def test_default_scan_and_legacy_filter_diagnostics_are_preserved(self):
         files = {
             "archive/table.md": "# Heading\n\n" + anchor("Exact") + " " + anchor("Exact") + "\n",
