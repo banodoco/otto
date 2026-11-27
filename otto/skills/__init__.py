@@ -25,6 +25,21 @@ def _legacy_path(value: Path) -> Path:
     return path
 
 
+def _validate_generated_header(header: str) -> None:
+    if (not isinstance(header, str) or not header.isprintable()
+            or header.count("{source}") != 1
+            or any(c in header.replace("{source}", "") for c in "{}")):
+        raise ValueError("generated_header must be one printable line with exactly one {source} placeholder")
+
+
+def _checkout_relative_path(value, name: str) -> Path:
+    path = Path(value)
+    if (path.is_absolute() or not path.parts or ".." in path.parts
+            or any(c in path.as_posix() for c in "\\\r\n")):
+        raise ValueError(f"{name} must be a nonempty checkout-relative path")
+    return path
+
+
 @dataclass(frozen=True)
 class SkillConfig:
     """One workspace's skill namespace and checkout-relative source/output paths."""
@@ -47,17 +62,9 @@ class SkillConfig:
         if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*-", self.namespace):
             raise ValueError("skill namespace must be lowercase kebab-case with a trailing hyphen")
         for name in ("source_root", "output"):
-            path = Path(getattr(self, name))
-            if (path.is_absolute() or not path.parts or ".." in path.parts
-                    or any(c in path.as_posix() for c in "\\\r\n")):
-                raise ValueError(f"{name} must be a nonempty checkout-relative path")
-            object.__setattr__(self, name, path)
-        header = self.generated_header
-        if header is not None:
-            if (not isinstance(header, str) or not header.isprintable()
-                    or header.count("{source}") != 1
-                    or any(c in header.replace("{source}", "") for c in "{}")):
-                raise ValueError("generated_header must be one printable line with exactly one {source} placeholder")
+            object.__setattr__(self, name, _checkout_relative_path(getattr(self, name), name))
+        if self.generated_header is not None:
+            _validate_generated_header(self.generated_header)
         for name in ("lock_name_override", "lock_stage_prefix_override",
                      "probe_stage_prefix_override", "build_stage_prefix_override"):
             value = getattr(self, name)
