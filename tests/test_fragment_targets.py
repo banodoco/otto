@@ -313,6 +313,52 @@ class FragmentTargetTests(unittest.TestCase):
                     "target.md": target,
                 }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
 
+    def test_uncertain_transitions_do_not_break_exact_backtick_runs(self):
+        transitions = (
+            "\u00a0", " \u00a0\t", "<div/no", "<div/no>",
+            "</div/no", "<!1", "<!1>",
+        )
+        for transition in transitions:
+            for width in (1, 2, 3):
+                ticks = "\x60" * width
+                # The shorter run in a longer code span is content.
+                sample = "sample " + ("\x60 " if width > 1 else "")
+                for position in ("before", "after", "both"):
+                    with self.subTest(transition=transition, width=width, position=position):
+                        left = GHOST if position in ("before", "both") else "text"
+                        right = GHOST if position in ("after", "both") else "text"
+                        target = (BEFORE + " before " + ticks + sample + left + "\n"
+                                  + transition + "\n" + right + " end" + ticks
+                                  + " after " + AFTER + "\n")
+                        self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                        self.assertEqual(findings({
+                            "reference.md": ("[before](target.md#before)\n"
+                                             "[ghost](target.md#ghost)\n"
+                                             "[after](target.md#after)\n"),
+                            "target.md": target,
+                        }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_proven_interruptions_do_not_join_unrelated_backtick_runs(self):
+        cases = {
+            "ASCII blank": ("before \x60literal " + BEFORE + "\n \t\n"
+                            "new \x60literal " + AFTER + "\n\n"),
+            "thematic break": ("before \x60literal " + BEFORE + "\n***\n"
+                               "new \x60literal " + AFTER + "\n\n"),
+            "real HTML block": ("before \x60literal " + BEFORE + "\n<div>\n"
+                                "\x60 " + GHOST + "\n</div>\n\n"
+                                "ordinary " + AFTER + "\n\n"),
+        }
+        for name, body in cases.items():
+            with self.subTest(name=name):
+                target = body + "Example \x60" + GHOST + "\x60.\n"
+                self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                self.assertEqual(findings({
+                    "reference.md": ("[before](target.md#before)\n"
+                                     "[ghost](target.md#ghost)\n"
+                                     "[after](target.md#after)\n"),
+                    "target.md": target,
+                }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
     def test_default_scan_and_legacy_filter_diagnostics_are_preserved(self):
         files = {
             "archive/table.md": "# Heading\n\n" + anchor("Exact") + " " + anchor("Exact") + "\n",
