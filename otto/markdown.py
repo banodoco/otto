@@ -92,7 +92,9 @@ def markdown_fragment_targets(text: str) -> set[str]:
     # block boundary. Escaped brackets are label content; unescaped ones
     # delimit it.
     definition = re.compile(r" {0,3}\[(?:\\[^\n]|[^\\\[\]])+\]:[ \t]*")
-    tag_start = re.compile(r"</?([a-z][a-z0-9-]*)(?=[ \t\n]|/?>|$)", re.ASCII | re.I)
+    # A broad mask for uncertain raw text is not proof of a block break.
+    tag_start = re.compile(r"</?([a-z][a-z0-9-]*)(?=[ \t\n/>]|$)", re.ASCII | re.I)
+    block_tag_start = re.compile(r"</?([a-z][a-z0-9-]*)(?=[ \t]|/?>|$)", re.ASCII | re.I)
     tag = re.compile(r"""</?([a-z][a-z0-9-]*)(?=[ \t\n/>])(?:[^<>"']|"[^"]*"|'[^']*')*>""",
                      re.ASCII | re.I)
     raw_names = {"script", "style", "textarea"}
@@ -105,11 +107,6 @@ def markdown_fragment_targets(text: str) -> set[str]:
                        "legend li link main menu menuitem nav noframes ol optgroup option p "
                        "param search section summary table tbody td tfoot th thead title tr "
                        "track ul").split())
-
-    def declaration_start(at):
-        # A declaration begins with <! followed by an ASCII upper-case
-        # letter. Do not treat <! followed by arbitrary text as HTML.
-        return re.match(r"<![A-Z]", text[at:at + 3]) is not None
 
     def html_interrupt(line):
         # Only exact block-interrupting prefixes, not generic HTML-looking
@@ -124,7 +121,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
             return True
         # Type 6 requires space/tab, >, /> or EOL after the name.
         # In particular, <div/no is ordinary text, not an interruption.
-        hit = tag_start.match(plain)
+        hit = block_tag_start.match(plain)
         return bool(hit and hit[1].lower() in block_names)
 
     def opener(line):
@@ -475,8 +472,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
 
         ch = text[i]
         if not raw_stack and not raw_block:
-            if (ch not in " \t\n" and not text.startswith(("<!--", "<?", "<![CDATA["), i)
-                    and not declaration_start(i)):
+            if ch not in " \t\n" and not text.startswith(("<!--", "<?", "<!"), i):
                 paragraph_open = True
             if ch == "\\" and i + 1 < limit and text[i + 1] in punctuation:
                 i += 2
@@ -499,7 +495,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                 i = len(text) if end < 0 else end + 3
                 continue
             for prefix, closer in (("<![CDATA[", "]]>"), ("<?", "?>"), ("<!", ">")):
-                if text.startswith(prefix, i) and (prefix != "<!" or declaration_start(i)):
+                if text.startswith(prefix, i):
                     end = text.find(closer, i + len(prefix))
                     i = len(text) if end < 0 else end + len(closer)
                     break
