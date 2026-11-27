@@ -146,11 +146,12 @@ def markdown_fragment_targets(text: str) -> set[str]:
             spans.pop()
         return spans
 
-    # Only a matching header/separator establishes a table. A body row may
-    # have fewer cells (padded) or more cells (discarded), or no pipe at all.
-    # Retain the rendered width throughout the contiguous table, and skip
-    # surplus cells entirely, including any misleading inline delimiters.
+    # Index candidate table shapes independently of the preceding line.
+    # The live scanner activates cell boundaries only at a block start.
+    # In an uncertain paragraph, withhold ids from possible surplus cells
+    # without using those cells to split ordinary inline code or link spans.
     discarded = []
+    table_candidates = {}
     table_end = 0
     for n in range(1, len(lines)):
         if n - 1 < table_end:
@@ -164,11 +165,9 @@ def markdown_fragment_targets(text: str) -> set[str]:
                 or len(cell_spans(header)) != width
                 or not header.strip() or opener(header) or container.match(header)
                 or heading_line.match(header) or rule_line.fullmatch(header)
-                or html_interrupt(header) or header.startswith(("    ", "\t"))
-                or (n > 1 and lines[n - 2].strip()
-                    and not heading_line.match(lines[n - 2])
-                    and not rule_line.fullmatch(lines[n - 2]))):
+                or html_interrupt(header) or header.startswith(("    ", "\t"))):
             continue
+        table_cuts = set()
         for k in range(n - 1, len(lines)):
             row = lines[k]
             if k > n and (not row.strip() or container.match(row) or opener(row)
@@ -177,19 +176,29 @@ def markdown_fragment_targets(text: str) -> set[str]:
                 break
             table_end = k + 1
             start, end = starts[k], starts[k] + len(row)
-            cuts.update((start, end))
-            cuts.update(start + p for p in pipes(row))
+            table_cuts.update((start, end))
+            table_cuts.update(start + p for p in pipes(row))
             spans = cell_spans(row)
             if len(spans) > width:
                 discarded.append((start + spans[width][0] - 1, end))
+        table_candidates[starts[n - 1]] = (
+            starts[table_end] if table_end < len(lines) else len(text),
+            sorted(table_cuts))
     cuts = sorted(cuts)
+    active_table_end = -1
+    active_table_cuts = ()
     runs = {}
     for hit in re.finditer(r"\x60+", text):
         runs.setdefault(len(hit[0]), []).append(hit.start())
 
     def inline_end(at):
         index = bisect_right(cuts, at)
-        return cuts[index] if index < len(cuts) else len(text)
+        limit = cuts[index] if index < len(cuts) else len(text)
+        if at < active_table_end:
+            cell = bisect_right(active_table_cuts, at)
+            limit = min(limit, active_table_end,
+                        active_table_cuts[cell] if cell < len(active_table_cuts) else active_table_end)
+        return limit
 
     def line_end(at):
         end = text.find("\n", at)
@@ -290,12 +299,19 @@ def markdown_fragment_targets(text: str) -> set[str]:
                                   and not heading_line.match(inner)
                                   and not rule_line.fullmatch(inner))
     discard_index = 0
+    paragraph_open = False
     while i < len(text):
+        if active_table_end >= 0 and i >= active_table_end:
+            active_table_end, active_table_cuts = -1, ()
+            paragraph_open = False
         while discard_index < len(discarded) and discarded[discard_index][1] <= i:
             discard_index += 1
+        surplus = False
         if discard_index < len(discarded):
             start, end = discarded[discard_index]
-            if start <= i < end:
+            surplus = start <= i < end
+            if surplus and i < active_table_end:
+                # A confirmed table does not render these cells at all.
                 finish_inline()
                 i = end
                 continue
@@ -303,12 +319,14 @@ def markdown_fragment_targets(text: str) -> set[str]:
             line = by_start[i]
             next_line = i + len(line) + 1
             if fence:
+                paragraph_open = False
                 if re.fullmatch(r" {0,3}" + re.escape(fence[0]) + "{" + str(len(fence)) + r",}[ \t]*", line):
                     fence = None
                 i = next_line
                 continue
             if not line.strip():
                 raw_block = False
+                paragraph_open = False
                 after_blank = True
                 finish_inline()
                 i = next_line
@@ -317,6 +335,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                 marker = container.match(line)
                 indent = len(line) - len(line.lstrip(" \t"))
                 if marker:
+                    paragraph_open = False
                     new_indent = 0 if marker[1] == ">" else marker.end()
                     if after_blank or new_indent != container_indent:
                         container_fence = None
@@ -327,6 +346,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                     continue
                 if container_indent is not None:
                     if container_indent and indent >= container_indent:
+                        paragraph_open = False
                         container_fence, container_lazy = container_content(line[container_indent:], container_fence)
                         after_blank = False
                         i = next_line
@@ -340,14 +360,21 @@ def markdown_fragment_targets(text: str) -> set[str]:
                     container_lazy = False
                 after_blank = False
                 fence = opener(line)
-                if fence or indent >= 4 or "\t" in line[:indent] or heading_line.match(line):
+                if fence or indent >= 4 or "\t" in line[:indent] or heading_line.match(line) or rule_line.fullmatch(line):
+                    paragraph_open = False
                     i = next_line
                     continue
+                if not paragraph_open and i in table_candidates:
+                    active_table_end, active_table_cuts = table_candidates[i]
                 limit = inline_end(i)
                 ref = definition.match(text, i, limit)
                 if ref:
                     i = reference_end(ref.end(), limit)
+                    paragraph_open = False
                     continue
+                # A standalone HTML interruption (e.g. a comment) is a
+                # block boundary. Ordinary prose is not.
+                paragraph_open = not html_interrupt(line)
 
         limit = inline_end(i)
         if limit != inline_boundary:
@@ -367,6 +394,8 @@ def markdown_fragment_targets(text: str) -> set[str]:
 
         ch = text[i]
         if not raw_stack and not raw_block:
+            if not ch.isspace() and not text.startswith(("<!--", "<?", "<!"), i):
+                paragraph_open = True
             if ch == "\\" and i + 1 < limit and text[i + 1] in punctuation:
                 i += 2
                 continue
@@ -401,7 +430,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
             else:
                 hit = anchor.match(text, i, limit)
                 if hit:
-                    if not raw_stack and not raw_block:
+                    if not raw_stack and not raw_block and not surplus:
                         (brackets[-1] if brackets else targets).add(hit[2])
                     i = hit.end()
                     continue
