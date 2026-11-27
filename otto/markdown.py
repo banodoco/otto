@@ -79,12 +79,13 @@ def markdown_fragment_targets(text: str) -> set[str]:
     fence_open = re.compile(r" {0,3}(\x60{3,}|~{3,})(.*)")
     container = re.compile(r" {0,3}(>|(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|$))")
     heading_line = re.compile(r" {0,3}#{1,6}(?:[ \t]|$)")
-    rule_line = re.compile(r" {0,3}(?:(?:[-*_][ \t]*){3,}|=+[ \t]*|-+[ \t]*)$")
+    rule_line = re.compile(r" {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|=+[ \t]*|-+[ \t]*)$")
     definition = re.compile(r" {0,3}\[(?:\\.|[^\\\]\n])+\]:[ \t]*")
     tag_start = re.compile(r"</?([a-z][a-z0-9-]*)(?=[ \t\n/>])", re.ASCII | re.I)
     tag = re.compile(r"""</?([a-z][a-z0-9-]*)(?=[ \t\n/>])(?:[^<>"']|"[^"]*"|'[^']*')*>""",
                      re.ASCII | re.I)
-    raw_names = {"script", "style", "pre", "textarea"}
+    raw_names = {"script", "style", "textarea"}
+    raw_until_close = raw_names | {"pre"}
     void_names = {"area", "base", "br", "col", "embed", "hr", "img", "input",
                   "link", "meta", "param", "source", "track", "wbr"}
     block_names = set(("address article aside base basefont blockquote body caption center col "
@@ -93,6 +94,17 @@ def markdown_fragment_targets(text: str) -> set[str]:
                        "legend li link main menu menuitem nav noframes ol optgroup option p "
                        "param search section summary table tbody td tfoot th thead title tr "
                        "track ul").split())
+
+    def html_interrupt(line):
+        # CommonMark HTML blocks of types 1–6 interrupt a paragraph.
+        # Other standalone HTML tags cannot interrupt an existing paragraph.
+        plain = line.lstrip(" ")
+        if len(line) - len(plain) > 3:
+            return False
+        if plain.startswith(("<!--", "<?", "<!")):
+            return True
+        hit = tag_start.match(plain)
+        return bool(hit and hit[1].lower() in block_names | raw_until_close)
 
     def opener(line):
         hit = fence_open.fullmatch(line)
@@ -112,7 +124,8 @@ def markdown_fragment_targets(text: str) -> set[str]:
         starts.append(offset)
         by_start[offset] = line
         end = offset + len(line)
-        if not line.strip() or opener(line) or container.match(line) or rule_line.fullmatch(line):
+        if (not line.strip() or opener(line) or container.match(line)
+                or rule_line.fullmatch(line) or html_interrupt(line)):
             cuts.add(offset)
         if heading_line.match(line):
             cuts.update((offset, end))
@@ -183,7 +196,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                 at += 2
             elif first and ch == "<":
                 at = delimited(at + 1, limit, ">")
-            elif ch in "\"'" and at > 0 and text[at - 1].isspace():
+            elif ch in "\"'" and (first or (at > 0 and text[at - 1].isspace())):
                 at = delimited(at + 1, limit, ch)
             elif ch == "(":
                 depth += 1
@@ -216,7 +229,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
         if at < limit and text[at] in "\"'(":
             closer = ")" if text[at] == "(" else text[at]
             end = min(line_end(delimited(at + 1, limit, closer)), limit)
-        return min(end + 1, len(text))
+        return min(end + 1, limit, len(text))
 
     i = 0
     # A leading YAML-like metadata block is not rendered prose.
@@ -226,11 +239,35 @@ def markdown_fragment_targets(text: str) -> set[str]:
 
     fence = None
     container_indent = None
+    container_fence = None
+    container_lazy = False
     after_blank = False
     raw_stack = []
     raw_block = False
-    bracket_depth = 0
+    brackets: list[set[str]] = []
     inline_boundary = -1
+
+    def finish_inline():
+        # A matched bracket may be a link label (including a shortcut
+        # reference); an unmatched opening bracket is literal prose.
+        for pending in brackets:
+            targets.update(pending)
+        brackets.clear()
+
+    def container_content(inner, active_fence):
+        # We do not grant any ids in containers. Recognize just enough of a
+        # nested fence to avoid treating following ordinary prose as lazy
+        # paragraph continuation after the container ends.
+        while (marker := container.match(inner)):
+            inner = inner[marker.end():]
+        if active_fence:
+            if re.fullmatch(r" {0,3}" + re.escape(active_fence[0]) + "{" + str(len(active_fence)) + r",}[ \t]*", inner):
+                return None, False
+            return active_fence, False
+        active_fence = opener(inner)
+        return active_fence, bool(inner.strip() and not active_fence
+                                  and not heading_line.match(inner)
+                                  and not rule_line.fullmatch(inner))
     while i < len(text):
         if i in by_start:
             line = by_start[i]
@@ -243,25 +280,34 @@ def markdown_fragment_targets(text: str) -> set[str]:
             if not line.strip():
                 raw_block = False
                 after_blank = True
-                bracket_depth = 0
+                finish_inline()
                 i = next_line
                 continue
             if not raw_stack and not raw_block:
                 marker = container.match(line)
                 indent = len(line) - len(line.lstrip(" \t"))
                 if marker:
-                    container_indent = 0 if marker[1] == ">" else marker.end()
+                    new_indent = 0 if marker[1] == ">" else marker.end()
+                    if after_blank or new_indent != container_indent:
+                        container_fence = None
+                    container_indent = new_indent
+                    container_fence, container_lazy = container_content(line[marker.end():], container_fence)
                     after_blank = False
                     i = next_line
                     continue
                 if container_indent is not None:
-                    if ((container_indent and indent >= container_indent)
-                            or (not after_blank and not opener(line)
-                                and not heading_line.match(line) and not rule_line.fullmatch(line))):
-                        # Includes lazy continuation and nested container code.
+                    if container_indent and indent >= container_indent:
+                        container_fence, container_lazy = container_content(line[container_indent:], container_fence)
+                        after_blank = False
                         i = next_line
                         continue
-                    container_indent = None
+                    if (container_lazy and not after_blank and not opener(line)
+                            and not heading_line.match(line) and not rule_line.fullmatch(line)
+                            and not html_interrupt(line)):
+                        i = next_line
+                        continue
+                    container_indent = container_fence = None
+                    container_lazy = False
                 after_blank = False
                 fence = opener(line)
                 if fence or indent >= 4 or "\t" in line[:indent] or heading_line.match(line):
@@ -274,7 +320,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
 
         limit = inline_end(i)
         if limit != inline_boundary:
-            bracket_depth = 0
+            finish_inline()
             inline_boundary = limit
 
         # Raw-text contents are not Markdown; only the matching closing tag
@@ -303,9 +349,10 @@ def markdown_fragment_targets(text: str) -> set[str]:
                      and matches[k] + end - i <= limit else end)
                 continue
             if ch == "[":
-                bracket_depth += 1
+                brackets.append(set())
             elif ch == "]":
-                bracket_depth = max(0, bracket_depth - 1)
+                if brackets:
+                    brackets.pop()
                 if text.startswith("](", i):
                     i = link_end(i + 2, limit)
                     continue
@@ -323,8 +370,8 @@ def markdown_fragment_targets(text: str) -> set[str]:
             else:
                 hit = anchor.match(text, i, limit)
                 if hit:
-                    if not raw_stack and not raw_block and not bracket_depth:
-                        targets.add(hit[2])
+                    if not raw_stack and not raw_block:
+                        (brackets[-1] if brackets else targets).add(hit[2])
                     i = hit.end()
                     continue
                 start = tag_start.match(text, i, limit)
@@ -337,9 +384,14 @@ def markdown_fragment_targets(text: str) -> set[str]:
                         i = limit
                         continue
                     line_start = text.rfind("\n", 0, i) + 1
-                    if (not text[line_start:i].strip() and name not in raw_names
-                            and (name in block_names or not text[token.end():line_end(token.end())].strip())):
-                        raw_block = True
+                    if not text[line_start:i].strip() and name not in raw_until_close:
+                        previous_start = text.rfind("\n", 0, max(0, line_start - 1)) + 1
+                        previous = text[previous_start:max(0, line_start - 1)]
+                        new_block = (not previous.strip() or heading_line.match(previous)
+                                     or rule_line.fullmatch(previous))
+                        if name in block_names or (not raw_stack and new_block
+                                and not text[token.end():line_end(token.end())].strip()):
+                            raw_block = True
                     if text.startswith("</", i):
                         if name in raw_stack:
                             while raw_stack.pop() != name:
@@ -351,6 +403,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                 i += 1
             continue
         i += 1
+    finish_inline()
     return targets
 
 
