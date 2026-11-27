@@ -399,7 +399,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                     paragraph_open = False
                     i = next_line
                     continue
-                if not paragraph_open and i in table_candidates:
+                if active_table_end < 0 and not paragraph_open and i in table_candidates:
                     active_table_end, active_table_cuts, active_discarded = table_extent(i, table_candidates[i])
                 limit = inline_end(i)
                 ref = definition.match(text, i, limit)
