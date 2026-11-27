@@ -312,7 +312,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                 at += 2
             elif first and ch == "<":
                 at = delimited(at + 1, limit, ">")
-            elif ch in "\"'" and (first or (at > 0 and text[at - 1] in " \t\n")):
+            elif ch in "\"'" and (first or (at > 0 and text[at - 1].isspace())):
                 at = delimited(at + 1, limit, ch)
             elif ch == "(":
                 depth += 1
@@ -324,7 +324,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                     return at
             else:
                 at += 1
-                if first and ch in " \t\n":
+                if first and ch.isspace():
                     continue
             first = False
         return limit
@@ -332,15 +332,15 @@ def markdown_fragment_targets(text: str) -> set[str]:
     def reference_end(at, limit):
         # Definitions may place the destination or a quoted title on the
         # following line. Do not swallow the next ordinary prose line.
-        while at < limit and text[at] in " \t\n":
+        while at < limit and text[at].isspace():
             at += 1
         if at < limit and text[at] == "<":
             at = delimited(at + 1, limit, ">")
         else:
-            while at < limit and text[at] not in " \t\n":
+            while at < limit and not text[at].isspace():
                 at += 1
         end = min(line_end(at), limit)
-        while at < limit and text[at] in " \t\n":
+        while at < limit and text[at].isspace():
             at += 1
         if at < limit and text[at] in "\"'(":
             closer = ")" if text[at] == "(" else text[at]
