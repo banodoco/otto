@@ -77,14 +77,21 @@ def markdown_fragment_targets(text: str) -> set[str]:
     from string import punctuation
 
     fence_open = re.compile(r" {0,3}(\x60{3,}|~{3,})(.*)")
-    container = re.compile(r" {0,3}(>|(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|$))")
+    container = re.compile(r" {0,3}(>|(?:[-+*]|[0-9]{1,9}[.)])(?:[ \t]+|$))")
     heading_line = re.compile(r" {0,3}#{1,6}(?:[ \t]|$)")
-    rule_line = re.compile(r" {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|=+[ \t]*|-+[ \t]*)$")
+    thematic_line = re.compile(r" {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$")
+    rule_line = re.compile(r" {0,3}(?:=+|-+)[ \t]*$")
+
+    def rule(line):
+        return thematic_line.fullmatch(line) or rule_line.fullmatch(line)
+
+    def blank(line):
+        return not line.strip(" \t")
     # A reference label may span physical lines, but never an inline
     # block boundary. Escaped brackets are label content; unescaped ones
     # delimit it.
     definition = re.compile(r" {0,3}\[(?:\\[^\n]|[^\\\[\]])+\]:[ \t]*")
-    tag_start = re.compile(r"</?([a-z][a-z0-9-]*)(?=[ \t\n/>]|$)", re.ASCII | re.I)
+    tag_start = re.compile(r"</?([a-z][a-z0-9-]*)(?=[ \t\n]|/?>|$)", re.ASCII | re.I)
     tag = re.compile(r"""</?([a-z][a-z0-9-]*)(?=[ \t\n/>])(?:[^<>"']|"[^"]*"|'[^']*')*>""",
                      re.ASCII | re.I)
     raw_names = {"script", "style", "textarea"}
@@ -98,16 +105,26 @@ def markdown_fragment_targets(text: str) -> set[str]:
                        "param search section summary table tbody td tfoot th thead title tr "
                        "track ul").split())
 
+    def declaration_start(at):
+        # A declaration begins with <! followed by an ASCII upper-case
+        # letter. Do not treat <! followed by arbitrary text as HTML.
+        return re.match(r"<![A-Z]", text[at:at + 3]) is not None
+
     def html_interrupt(line):
-        # CommonMark HTML blocks of types 1–6 interrupt a paragraph.
-        # Other standalone HTML tags cannot interrupt an existing paragraph.
+        # Only exact block-interrupting prefixes, not generic HTML-looking
+        # text. Type 7 standalone tags cannot interrupt a paragraph.
         plain = line.lstrip(" ")
         if len(line) - len(plain) > 3:
             return False
-        if plain.startswith(("<!--", "<?", "<!")):
+        if plain.startswith(("<!--", "<?", "<![CDATA[")) or re.match(r"<![A-Z]", plain):
             return True
+        # Type 1 has its own delimiter rule and only opening tags.
+        if re.match(r"<(?:script|style|pre|textarea)(?=[ \t>]|$)", plain, re.ASCII | re.I):
+            return True
+        # Type 6 requires space/tab, >, /> or EOL after the name.
+        # In particular, <div/no is ordinary text, not an interruption.
         hit = tag_start.match(plain)
-        return bool(hit and hit[1].lower() in block_names | raw_until_close)
+        return bool(hit and hit[1].lower() in block_names)
 
     def opener(line):
         hit = fence_open.fullmatch(line)
@@ -124,7 +141,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
             return False
         if marker[1] == ">":
             return True
-        return bool(re.match(r" {0,3}(?:[-+*]|0{0,8}1[.)])[ \t]+(?=\S)", line))
+        return bool(re.match(r" {0,3}(?:[-+*]|0{0,8}1[.)])[ \t]+(?=[^ \t])", line))
 
     # Inline code/link spans cannot cross a paragraph/block boundary. Table
     # cells are separate inline contexts as well. Index boundaries and runs
@@ -134,15 +151,23 @@ def markdown_fragment_targets(text: str) -> set[str]:
     by_start = {}
     offset = 0
     cuts = {len(text)}
+    code_cuts = {len(text)}
     for line in lines:
         starts.append(offset)
         by_start[offset] = line
         end = offset + len(line)
-        if (not line.strip() or opener(line) or container_interrupt(line)
-                or rule_line.fullmatch(line) or html_interrupt(line)):
+        # A possible setext marker or other bookkeeping cut is not
+        # sufficient evidence to expose a tag inside a code span. Use a
+        # separate, narrower set of exact paragraph interruptions.
+        if (blank(line) or opener(line) or container_interrupt(line)
+                or thematic_line.fullmatch(line) or heading_line.match(line)
+                or html_interrupt(line)):
+            code_cuts.add(offset)
+            cuts.add(offset)
+        if rule_line.fullmatch(line):
             cuts.add(offset)
         if heading_line.match(line):
-            cuts.update((offset, end))
+            cuts.add(end)
         offset = end + 1
 
     def pipes(line):
@@ -151,15 +176,15 @@ def markdown_fragment_targets(text: str) -> set[str]:
     def cell_spans(line):
         points = pipes(line)
         spans = [(a + 1, b) for a, b in zip([-1, *points], [*points, len(line)])]
-        if points and not line[slice(*spans[0])].strip():
+        if points and blank(line[slice(*spans[0])]):
             spans.pop(0)
-        if points and spans and not line[slice(*spans[-1])].strip():
+        if points and spans and blank(line[slice(*spans[-1])]):
             spans.pop()
         return spans
 
     def table_boundary(line):
-        return (not line.strip() or container_interrupt(line) or opener(line)
-                or heading_line.match(line) or rule_line.fullmatch(line)
+        return (blank(line) or container_interrupt(line) or opener(line)
+                or heading_line.match(line) or rule(line)
                 or html_interrupt(line) or line.startswith(("    ", "\t")))
 
     # Index matching header/separator pairs without assuming the preceding
@@ -172,7 +197,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
         columns = cell_spans(separator)
         width = len(columns)
         if (not pipes(separator) or not width
-                or not all(re.fullmatch(r":?-+:?", separator[a:b].strip()) for a, b in columns)
+                or not all(re.fullmatch(r":?-+:?", separator[a:b].strip(" \t")) for a, b in columns)
                 or len(cell_spans(header)) != width
                 or table_boundary(header) or container.match(header)):
             continue
@@ -224,6 +249,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
         return None
 
     cuts = sorted(cuts)
+    code_cuts = sorted(code_cuts)
     active_table_end = -1
     active_table_cuts = ()
     active_discarded = ()
@@ -231,14 +257,33 @@ def markdown_fragment_targets(text: str) -> set[str]:
     for hit in re.finditer(r"\x60+", text):
         runs.setdefault(len(hit[0]), []).append(hit.start())
 
-    def inline_end(at):
-        index = bisect_right(cuts, at)
-        limit = cuts[index] if index < len(cuts) else len(text)
+    def context_end(at, boundaries):
+        index = bisect_right(boundaries, at)
+        limit = boundaries[index] if index < len(boundaries) else len(text)
         if at < active_table_end:
             cell = bisect_right(active_table_cuts, at)
             limit = min(limit, active_table_end,
                         active_table_cuts[cell] if cell < len(active_table_cuts) else active_table_end)
         return limit
+
+    def inline_end(at):
+        return context_end(at, cuts)
+
+    def backtick_end(at):
+        # A same-width run is a veto on every intervening potential target
+        # until an exact interruption or a confirmed cell boundary. Never
+        # use the speculative inline bookkeeping cuts to decide an opener
+        # is literal. Runs inside the span are content, including escapes.
+        limit = context_end(at, code_cuts)
+        end = at + 1
+        while end < limit and text[end] == chr(96):
+            end += 1
+        width = end - at
+        matches = runs.get(width, [])
+        index = bisect_left(matches, end)
+        if index < len(matches) and matches[index] + width <= limit:
+            return matches[index] + width
+        return end
 
     def line_end(at):
         end = text.find("\n", at)
@@ -266,7 +311,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                 at += 2
             elif first and ch == "<":
                 at = delimited(at + 1, limit, ">")
-            elif ch in "\"'" and (first or (at > 0 and text[at - 1].isspace())):
+            elif ch in "\"'" and (first or (at > 0 and text[at - 1] in " \t\n")):
                 at = delimited(at + 1, limit, ch)
             elif ch == "(":
                 depth += 1
@@ -278,7 +323,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                     return at
             else:
                 at += 1
-                if first and ch.isspace():
+                if first and ch in " \t\n":
                     continue
             first = False
         return limit
@@ -286,15 +331,15 @@ def markdown_fragment_targets(text: str) -> set[str]:
     def reference_end(at, limit):
         # Definitions may place the destination or a quoted title on the
         # following line. Do not swallow the next ordinary prose line.
-        while at < limit and text[at].isspace():
+        while at < limit and text[at] in " \t\n":
             at += 1
         if at < limit and text[at] == "<":
             at = delimited(at + 1, limit, ">")
         else:
-            while at < limit and not text[at].isspace():
+            while at < limit and not text[at] in " \t\n":
                 at += 1
         end = min(line_end(at), limit)
-        while at < limit and text[at].isspace():
+        while at < limit and text[at] in " \t\n":
             at += 1
         if at < limit and text[at] in "\"'(":
             closer = ")" if text[at] == "(" else text[at]
@@ -335,9 +380,9 @@ def markdown_fragment_targets(text: str) -> set[str]:
                 return None, False
             return active_fence, False
         active_fence = opener(inner)
-        return active_fence, bool(inner.strip() and not active_fence
+        return active_fence, bool(inner.strip(" \t") and not active_fence
                                   and not heading_line.match(inner)
-                                  and not rule_line.fullmatch(inner))
+                                  and not rule(inner))
     paragraph_open = False
     while i < len(text):
         if active_table_end >= 0 and i >= active_table_end:
@@ -359,7 +404,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                     fence = None
                 i = next_line
                 continue
-            if not line.strip():
+            if not line.strip(" \t"):
                 raw_block = False
                 paragraph_open = False
                 after_blank = True
@@ -387,7 +432,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                         i = next_line
                         continue
                     if (container_lazy and not after_blank and not opener(line)
-                            and not heading_line.match(line) and not rule_line.fullmatch(line)
+                            and not heading_line.match(line) and not rule(line)
                             and not html_interrupt(line)):
                         i = next_line
                         continue
@@ -395,7 +440,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                     container_lazy = False
                 after_blank = False
                 fence = opener(line)
-                if fence or indent >= 4 or "\t" in line[:indent] or heading_line.match(line) or rule_line.fullmatch(line):
+                if fence or indent >= 4 or "\t" in line[:indent] or heading_line.match(line) or rule(line):
                     paragraph_open = False
                     i = next_line
                     continue
@@ -429,19 +474,13 @@ def markdown_fragment_targets(text: str) -> set[str]:
 
         ch = text[i]
         if not raw_stack and not raw_block:
-            if not ch.isspace() and not text.startswith(("<!--", "<?", "<!"), i):
+            if not ch in " \t\n" and not text.startswith(("<!--", "<?", "<!"), i):
                 paragraph_open = True
             if ch == "\\" and i + 1 < limit and text[i + 1] in punctuation:
                 i += 2
                 continue
             if ch == chr(96):
-                end = i + 1
-                while end < limit and text[end] == ch:
-                    end += 1
-                matches = runs.get(end - i, [])
-                k = bisect_left(matches, end)
-                i = (matches[k] + end - i if k < len(matches)
-                     and matches[k] + end - i <= limit else end)
+                i = backtick_end(i)
                 continue
             if ch == "[":
                 brackets.append(set())
@@ -458,7 +497,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                 i = len(text) if end < 0 else end + 3
                 continue
             for prefix, closer in (("<![CDATA[", "]]>"), ("<?", "?>"), ("<!", ">")):
-                if text.startswith(prefix, i):
+                if text.startswith(prefix, i) and (prefix != "<!" or declaration_start(i)):
                     end = text.find(closer, i + len(prefix))
                     i = len(text) if end < 0 else end + len(closer)
                     break
@@ -479,13 +518,13 @@ def markdown_fragment_targets(text: str) -> set[str]:
                         i = limit
                         continue
                     line_start = text.rfind("\n", 0, i) + 1
-                    if not text[line_start:i].strip() and name not in raw_until_close:
+                    if not text[line_start:i].strip(" \t") and name not in raw_until_close:
                         previous_start = text.rfind("\n", 0, max(0, line_start - 1)) + 1
                         previous = text[previous_start:max(0, line_start - 1)]
-                        new_block = (not previous.strip() or heading_line.match(previous)
-                                     or rule_line.fullmatch(previous))
+                        new_block = (not previous.strip(" \t") or heading_line.match(previous)
+                                     or rule(previous))
                         if name in block_names or (not raw_stack and new_block
-                                and not text[token.end():line_end(token.end())].strip()):
+                                and not text[token.end():line_end(token.end())].strip(" \t")):
                             raw_block = True
                     if text.startswith("</", i):
                         if name in raw_stack:
