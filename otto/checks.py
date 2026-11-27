@@ -79,11 +79,13 @@ def _markdown_paths(root, excluded=None):
 
 
 def _link_anchors(context, target_pattern=None, *, located=False, excluded=None):
-    """A relative Markdown link with a fragment must name a heading in its target."""
+    """A relative Markdown fragment must name a heading or a supported explicit id."""
+    from .markdown import markdown_fragment_targets
+
     root = context.root
 
     def anchors(relative):
-        return {anchor for _, _, anchor in markdown_heading_anchors(read(root, relative))}
+        return markdown_fragment_targets(read(root, relative))
 
     errors = []
     for path in _markdown_paths(root, excluded):
