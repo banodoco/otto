@@ -235,6 +235,8 @@ class FragmentTargetTests(unittest.TestCase):
             "closed tilde fence": "~~~~text\nx\n~~~~\n",
             "closed comment": "<!-- example -->\n",
             "closed multiline comment": "<!--\nexample\n-->\n",
+            "hidden wider table in comment": "<!--\n| A | B |\n| --- | --- |\n-->\n",
+
             "reference definition": "[example]: /real\n",
             "multiline reference definition": "[multiple\nlines]: /real\n  \"title\"\n",
         }
@@ -283,6 +285,33 @@ class FragmentTargetTests(unittest.TestCase):
                              "[prose](target.md#prose)\n"),
             "target.md": target,
         }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_noninterrupting_list_markers_do_not_end_inline_code(self):
+        for marker in ("2. ordinary", "2) ordinary", "0002. ordinary", "+", "*", "1."):
+            with self.subTest(marker=marker):
+                target = (BEFORE + " before \x60sample " + GHOST + "\n"
+                          + marker + "\nend\x60 after " + AFTER + "\n")
+                self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                self.assertEqual(findings({
+                    "reference.md": ("[before](target.md#before)\n"
+                                     "[ghost](target.md#ghost)\n"
+                                     "[after](target.md#after)\n"),
+                    "target.md": target,
+                }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_real_list_interrupts_paragraph_without_hiding_live_anchor(self):
+        for marker in ("1. ordinary", "1) ordinary", "- ordinary", "+ ordinary", "* ordinary"):
+            with self.subTest(marker=marker):
+                target = ("before \x60literal " + BEFORE + "\n"
+                          + marker + " \x60 " + GHOST + "\n\n"
+                          "ordinary " + AFTER + "\n")
+                self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                self.assertEqual(findings({
+                    "reference.md": ("[before](target.md#before)\n"
+                                     "[ghost](target.md#ghost)\n"
+                                     "[after](target.md#after)\n"),
+                    "target.md": target,
+                }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
 
     def test_default_scan_and_legacy_filter_diagnostics_are_preserved(self):
         files = {
