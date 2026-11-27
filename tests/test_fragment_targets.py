@@ -1,0 +1,469 @@
+"""Explicit fragment targets: only the Lead-approved empty anchor subset."""
+import tempfile
+import unittest
+from pathlib import Path
+
+from otto import checks
+from otto.markdown import markdown_fragment_targets, markdown_heading_anchors
+
+
+GHOST = '<a id="ghost"></a>'
+BEFORE = '<a id="before"></a>'
+AFTER = '<a id="after"></a>'
+# The nine literal token shapes from the motivating table, in a neutral
+# synthetic document. The Lead additionally checks the original repository.
+ROW_IDS = ("at1-9", "at1-54", "at1-10", "at9", "rt1", "rt2", "pt2", "k2", "k3")
+DECOYS = {
+    "backtick fence": "\x60\x60\x60html\n" + GHOST + "\n\x60\x60\x60",
+    "long fence": "\x60\x60\x60\x60html\n\x60\x60\x60\n" + GHOST + "\n\x60\x60\x60\x60",
+    "tilde fence": "~~~html\n" + GHOST + "\n~~~",
+    "indented code": "    " + GHOST,
+    "tab-indented code": "\t" + GHOST,
+    "quote fence": "> \x60\x60\x60html\n> " + GHOST + "\n> \x60\x60\x60",
+    "list fence": "- \x60\x60\x60html\n  " + GHOST + "\n  \x60\x60\x60",
+    "list continuation": "- An example\n  " + GHOST,
+    "lazy quote continuation": "> An example\n" + GHOST,
+    "list with blank": "- An example\n\n  " + GHOST,
+    "inline code": "Example \x60" + GHOST + "\x60.",
+    "long inline code": "Example \x60\x60 \x60 " + GHOST + " \x60 \x60\x60.",
+    "multiline inline code": "Example \x60\x60 begins\n" + GHOST + "\nends \x60\x60.",
+    "inline comment": "Example <!-- " + GHOST + " -->.",
+    "multiline comment": "<!--\n\n\x60\x60\x60\n" + GHOST + "\n\x60\x60\x60\n-->",
+    "escaped tag": "\\" + GHOST,
+    "entity-escaped tag": '&lt;a id="ghost"&gt;&lt;/a&gt;',
+    "raw html block": "<div>\n" + GHOST + "\n</div>",
+    "inline raw html": "Example <code>" + GHOST + "</code>.",
+    "nested raw html": "<div><div></div>" + GHOST + "</div>",
+    "pre comment": "<pre><!-- </pre> -->" + GHOST + "</pre>",
+    "script": "<script>\n" + GHOST + "\n</script>",
+    "style": "<style>\n" + GHOST + "\n</style>",
+    "textarea": "<textarea>" + GHOST + "</textarea>",
+    "raw attribute": "Example <span title='" + GHOST + "'>text</span>.",
+    "inline link title": "[label](elsewhere 'title ) " + GHOST + " end')",
+    "multiline link title": "[label](elsewhere 'title\n" + GHOST + "\nend')",
+    "link destination": "[label](<" + GHOST + ">)",
+    "link label": "[" + GHOST + "](elsewhere)",
+    "reference title": "[ref]: elsewhere '" + GHOST + "'",
+    "reference continuation": "[ref]: elsewhere\n  '" + GHOST + "'",
+    "reference multiline title": "[ref]: elsewhere 'title\n" + GHOST + "\nend'",
+    "reference destination": "[ref]:\n  <" + GHOST + ">",
+    "unquoted": "<a id=ghost></a>",
+    "extra attribute": '<a id="ghost" title="x"></a>',
+    "duplicate attribute": '<a id="ghost" id="other"></a>',
+    "nonempty body": '<a id="ghost">text</a>',
+    "whitespace body": '<a id="ghost"> </a>',
+    "non-anchor element": '<span id="ghost"></span>',
+    "self closing": '<a id="ghost"/>',
+    "name only": '<a name="ghost"></a>',
+}
+
+
+def anchor(token):
+    return f'<a id="{token}"></a>'
+
+
+def table(ids=ROW_IDS):
+    return ("# Archive\n\n| Row | State |\n| --- | --- |\n"
+            + "".join(f"| Example {anchor(token)} text | ready |\n" for token in ids))
+
+
+def findings(files, *, excluded=None, **kwargs):
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory).resolve()
+        for name, body in files.items():
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(body, encoding="utf-8")
+        return checks._link_anchors(
+            checks.Context(root), excluded=root / excluded if excluded is not None else None,
+            **kwargs)
+
+
+def missing(source, target, token, line=None):
+    location = source if line is None else f"{source}:{line}"
+    return (f"{location}: link to {target}#{token} matches no heading in that file; "
+            "point the link at a heading that exists")
+
+
+class FragmentTargetTests(unittest.TestCase):
+    def test_heading_parser_is_unchanged_and_ids_are_a_separate_namespace(self):
+        text = ("# Example\n\n## Same heading\n\n## Same heading\n\n"
+                "## Use \x60check\x60 and [sync](sync.md)\n\n"
+                + anchor("same-heading") + " " + anchor("Same-heading") + " "
+                + anchor("same-heading") + "\n")
+        expected = [(1, "Example", "example"),
+                    (2, "Same heading", "same-heading"),
+                    (2, "Same heading", "same-heading-1"),
+                    (2, "Use \x60check\x60 and [sync](sync.md)", "use-check-and-sync")]
+        self.assertEqual(markdown_heading_anchors(text), expected)
+        self.assertEqual(markdown_fragment_targets(text),
+                         {item[2] for item in expected} | {"Same-heading"})
+        duplicate = anchor("Repeat") + " " + anchor("Repeat")
+        self.assertEqual(markdown_fragment_targets(duplicate), {"Repeat"})
+
+    def test_approved_quoted_grammar_in_prose_and_cells(self):
+        text = ("Before <A ID \t= 'Row_1:part.2' \t></a > after. "
+                '<a id="row_1:part.2"></a>\n\n'
+                "| First | Middle | Last |\n| --- | --- | --- |\n"
+                f"| {anchor('first')} | {anchor('middle')} {anchor('another')} | {anchor('last')} |\n"
+                "Unmatched \x60 prose " + anchor("literal-tick") + "\n\n"
+                "Unmatched [ prose " + anchor("literal-bracket") + "\n\n"
+                "\\\\" + anchor("even-escape") + "\n")
+        self.assertEqual(markdown_fragment_targets(text),
+                         {"Row_1:part.2", "row_1:part.2", "first", "middle",
+                          "another", "last", "literal-tick", "literal-bracket", "even-escape"})
+        invalid = ('<a id=""></a> <a id="white space"></a> <a id="café"></a> '
+                   '<a id="x&amp;y"></a> <a id="a\\b"></a>')
+        self.assertEqual(markdown_fragment_targets(invalid + " " + anchor("valid")), {"valid"})
+
+    def test_decoys_never_grant_targets_or_hide_following_ordinary_prose(self):
+        for name, decoy in DECOYS.items():
+            with self.subTest(name=name):
+                target = BEFORE + "\n\n" + decoy + "\n\n" + AFTER + "\n"
+                self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                self.assertEqual(findings({
+                    "reference.md": "[before](target.md#before)\n[ghost](target.md#ghost)\n[after](target.md#after)\n",
+                    "target.md": target,
+                }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_unclosed_code_comments_and_raw_contexts_do_not_grant_at_eof(self):
+        for prefix in ("\x60\x60\x60html\n", "~~~~\n", "<!--\n", "<pre>\n", "<a id='other'>\n"):
+            with self.subTest(prefix=prefix):
+                target = BEFORE + "\n\n" + prefix + GHOST + "\n"
+                self.assertEqual(markdown_fragment_targets(target), {"before"})
+                self.assertEqual(findings({"reference.md": "[ghost](target.md#ghost)\n",
+                                           "target.md": target}),
+                                 [missing("reference.md", "target.md", "ghost")])
+
+    def test_inline_context_boundaries_and_adjacent_live_targets(self):
+        text = ("Example \x60<!-- " + GHOST + " -->\x60 " + BEFORE + "\n\n"
+                "<!-- \x60 " + GHOST + " \x60 --> " + AFTER + "\n\n"
+                "> \x60\x60\x60\n> " + GHOST + "\n> \x60\x60\x60\n" + anchor("after-quote") + "\n\n"
+                "- \x60\x60\x60\n  " + GHOST + "\n  \x60\x60\x60\n" + anchor("after-list") + "\n\n"
+                "Example \x60unmatched\n<div>\n\x60 " + GHOST + "\n</div>\n\n"
+                + anchor("after-block") + "\n\n"
+                "| Code | Target |\n| --- | --- |\n"
+                "| \x60" + GHOST + "\x60 | " + anchor("after-cell") + " |\n"
+                "| \x60unmatched | " + anchor("separate-cell") + " |\n\n"
+                "[ref]: elsewhere\n" + anchor("after-reference") + "\n")
+        self.assertEqual(markdown_fragment_targets(text),
+                         {"before", "after", "after-quote", "after-list",
+                          "after-block", "after-cell", "separate-cell", "after-reference"})
+
+    def test_metadata_is_not_a_rendered_target(self):
+        self.assertEqual(markdown_fragment_targets(
+            "---\nname: " + GHOST + "\n---\n\n" + BEFORE + "\n"), {"before"})
+
+    def test_all_nine_table_tokens_resolve_and_each_removed_or_decoy_fails(self):
+        source = "".join(f"[row](../archive/table.md#{token})\n" for token in ROW_IDS)
+        files = {"packets/reference.md": source, "archive/table.md": table()}
+        self.assertEqual(findings(files, located=True), [])
+        for line, token in enumerate(ROW_IDS, 1):
+            row = anchor(token)
+            expected = [missing("packets/reference.md", "archive/table.md", token, line)]
+            for variant in ("", "\x60" + row + "\x60", "<!-- " + row + " -->"):
+                with self.subTest(token=token, replacement=variant):
+                    candidate = dict(files, **{"archive/table.md": table().replace(row, variant)})
+                    self.assertEqual(findings(candidate, located=True), expected)
+            with self.subTest(token=token, replacement="fence"):
+                candidate = dict(files, **{"archive/table.md":
+                    table().replace(row, "") + "\n\x60\x60\x60html\n" + row + "\n\x60\x60\x60\n"})
+                self.assertEqual(findings(candidate, located=True), expected)
+
+    def test_surplus_table_cells_never_supply_targets(self):
+        cases = {
+            "one column": (
+                "| Header |\n| --- |\n"
+                "| rendered | " + GHOST + " |\n"
+                "| " + BEFORE + " |\n| " + AFTER + " |\n"),
+            "two columns without outer pipes": (
+                "Header | Second\n--- | ---\n"
+                + BEFORE + " | rendered | " + GHOST + "\n"
+                + "short row\n"
+                + "rendered | " + AFTER + " | " + GHOST + "\n"),
+            "escaped pipe is not a column": (
+                "| Header | Second |\n| --- | --- |\n"
+                "| escaped \\| pipe " + BEFORE + " | " + AFTER
+                + " | " + GHOST + " |\n"),
+            "discarded comment cannot hide next rendered row": (
+                "| Header |\n| --- |\n"
+                "| " + BEFORE + " | <!-- " + GHOST + " |\n"
+                "| " + AFTER + " |\n"),
+        }
+        for name, target in cases.items():
+            with self.subTest(name=name):
+                # Ordinary prose after the table is not subject to its width.
+                target += "\nordinary | " + anchor("prose") + "\n"
+                self.assertEqual(markdown_fragment_targets(target),
+                                 {"before", "after", "prose"})
+                self.assertEqual(findings({
+                    "reference.md": ("[before](target.md#before)\n"
+                                     "[ghost](target.md#ghost)\n"
+                                     "[after](target.md#after)\n"
+                                     "[prose](target.md#prose)\n"),
+                    "target.md": target,
+                }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_multiline_reference_definitions_never_supply_targets(self):
+        cases = {
+            "reported multiline label": (
+                "[multiple\nlines]: /real\n  \"title <a id='ghost'></a>\""),
+            "escaped bracket and same-line title": (
+                "[multiple \\]\nlines]: /real '" + GHOST + "'"),
+            "multiline destination and title": (
+                "[multiple\nlines]:\n  /real\n  'title begins\n  "
+                + GHOST + "\n  title ends'"),
+            "parenthesized title": (
+                "[multiple\nlines]: /real\n  (title " + GHOST + ")"),
+        }
+        for name, definition in cases.items():
+            with self.subTest(name=name):
+                # The next plain line is not part of the definition; it and
+                # the preceding ordinary paragraph must remain valid targets.
+                target = BEFORE + "\n\n" + definition + "\n" + AFTER + "\n"
+                self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                self.assertEqual(findings({
+                    "reference.md": ("[before](target.md#before)\n"
+                                     "[ghost](target.md#ghost)\n"
+                                     "[after](target.md#after)\n"),
+                    "target.md": target,
+                }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_table_width_survives_block_transitions_without_blank_line(self):
+        prefixes = {
+            "closed fence": "\x60\x60\x60text\nx\n\x60\x60\x60\n",
+            "closed tilde fence": "~~~~text\nx\n~~~~\n",
+            "closed comment": "<!-- example -->\n",
+            "closed multiline comment": "<!--\nexample\n-->\n",
+            "hidden wider table in comment": "<!--\n| A | B |\n| --- | --- |\n-->\n",
+
+            "reference definition": "[example]: /real\n",
+            "multiline reference definition": "[multiple\nlines]: /real\n  \"title\"\n",
+        }
+        for name, prefix in prefixes.items():
+            with self.subTest(name=name):
+                target = (prefix + "| Header |\n| --- |\n"
+                          "| kept | " + GHOST + " |\n"
+                          "| " + BEFORE + " | <!-- discarded comment |\n"
+                          "| " + AFTER + " |\n\n"
+                          "Ordinary | " + anchor("prose") + "\n")
+                self.assertEqual(markdown_fragment_targets(target),
+                                 {"before", "after", "prose"})
+                self.assertEqual(findings({
+                    "reference.md": ("[before](target.md#before)\n"
+                                     "[ghost](target.md#ghost)\n"
+                                     "[after](target.md#after)\n"
+                                     "[prose](target.md#prose)\n"),
+                    "target.md": target,
+                }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_possible_table_does_not_split_an_existing_inline_code_span(self):
+        target = (BEFORE + " example \x60\x60\n"
+                  "| Header |\n| --- |\n"
+                  "| " + GHOST + " | ignored |\n"
+                  "end \x60\x60 " + AFTER + "\n\n"
+                  "Ordinary | " + anchor("prose") + "\n")
+        self.assertEqual(markdown_fragment_targets(target), {"before", "after", "prose"})
+        self.assertEqual(findings({
+            "reference.md": ("[before](target.md#before)\n"
+                             "[ghost](target.md#ghost)\n"
+                             "[after](target.md#after)\n"
+                             "[prose](target.md#prose)\n"),
+            "target.md": target,
+        }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_uncertain_table_width_withholds_only_possible_surplus(self):
+        target = ("Ordinary prose " + BEFORE + "\n"
+                  "| Header |\n| --- |\n"
+                  "| " + AFTER + " | " + GHOST + " |\n\n"
+                  "Ordinary | " + anchor("prose") + "\n")
+        self.assertEqual(markdown_fragment_targets(target), {"before", "after", "prose"})
+        self.assertEqual(findings({
+            "reference.md": ("[before](target.md#before)\n"
+                             "[ghost](target.md#ghost)\n"
+                             "[after](target.md#after)\n"
+                             "[prose](target.md#prose)\n"),
+            "target.md": target,
+        }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_noninterrupting_list_markers_do_not_end_inline_code(self):
+        for marker in ("2. ordinary", "2) ordinary", "0002. ordinary", "+", "*", "1."):
+            with self.subTest(marker=marker):
+                target = (BEFORE + " before \x60sample " + GHOST + "\n"
+                          + marker + "\nend\x60 after " + AFTER + "\n")
+                self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                self.assertEqual(findings({
+                    "reference.md": ("[before](target.md#before)\n"
+                                     "[ghost](target.md#ghost)\n"
+                                     "[after](target.md#after)\n"),
+                    "target.md": target,
+                }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_real_list_interrupts_paragraph_without_hiding_live_anchor(self):
+        for marker in ("1. ordinary", "1) ordinary", "- ordinary", "+ ordinary", "* ordinary"):
+            with self.subTest(marker=marker):
+                target = ("before \x60literal " + BEFORE + "\n"
+                          + marker + " \x60 " + GHOST + "\n\n"
+                          "ordinary " + AFTER + "\n")
+                self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                self.assertEqual(findings({
+                    "reference.md": ("[before](target.md#before)\n"
+                                     "[ghost](target.md#ghost)\n"
+                                     "[after](target.md#after)\n"),
+                    "target.md": target,
+                }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_uncertain_transitions_do_not_break_exact_backtick_runs(self):
+        transitions = (
+            "\u00a0", " \u00a0\t", "<div/no", "<div/no>",
+            "</div/no", "<!1", "<!1>",
+        )
+        for transition in transitions:
+            for width in (1, 2, 3):
+                ticks = "\x60" * width
+                # The shorter run in a longer code span is content.
+                sample = "sample " + ("\x60 " if width > 1 else "")
+                for position in ("before", "after", "both"):
+                    with self.subTest(transition=transition, width=width, position=position):
+                        left = GHOST if position in ("before", "both") else "text"
+                        right = GHOST if position in ("after", "both") else "text"
+                        target = (BEFORE + " before " + ticks + sample + left + "\n"
+                                  + transition + "\n" + right + " end" + ticks
+                                  + " after " + AFTER + "\n")
+                        self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                        self.assertEqual(findings({
+                            "reference.md": ("[before](target.md#before)\n"
+                                             "[ghost](target.md#ghost)\n"
+                                             "[after](target.md#after)\n"),
+                            "target.md": target,
+                        }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_proven_interruptions_do_not_join_unrelated_backtick_runs(self):
+        cases = {
+            "ASCII blank": ("before \x60literal " + BEFORE + "\n \t\n"
+                            "new \x60literal " + AFTER + "\n\n"),
+            "thematic break": ("before \x60literal " + BEFORE + "\n***\n"
+                               "new \x60literal " + AFTER + "\n\n"),
+            "real HTML block": ("before \x60literal " + BEFORE + "\n<div>\n"
+                                "\x60 " + GHOST + "\n</div>\n\n"
+                                "ordinary " + AFTER + "\n\n"),
+        }
+        for name, body in cases.items():
+            with self.subTest(name=name):
+                target = body + "Example \x60" + GHOST + "\x60.\n"
+                self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                self.assertEqual(findings({
+                    "reference.md": ("[before](target.md#before)\n"
+                                     "[ghost](target.md#ghost)\n"
+                                     "[after](target.md#after)\n"),
+                    "target.md": target,
+                }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_indented_delimiter_cannot_confirm_table_or_split_code(self):
+        for pad in ("    ", "     ", "\t", " \t", "  \t", "   \t", "\t ", "\t\t"):
+            for eol in ("\n", "\r\n"):
+                for width in (1, 2):
+                    for position in ("before", "after", "both"):
+                        with self.subTest(pad=pad, eol=eol, width=width, position=position):
+                            ticks = "\x60" * width
+                            left = GHOST if position in ("before", "both") else "sample"
+                            right = GHOST if position in ("after", "both") else "sample"
+                            target = eol.join((
+                                BEFORE + " before " + ticks + left,
+                                pad + "|---|",
+                                right + " end" + ticks + " after " + AFTER,
+                                "",
+                            ))
+                            self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                            self.assertEqual(findings({
+                                "reference.md": ("[before](target.md#before)\n"
+                                                 "[ghost](target.md#ghost)\n"
+                                                 "[after](target.md#after)\n"),
+                                "target.md": target,
+                            }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_indented_header_does_not_discard_live_prose_targets(self):
+        for pad in ("    ", "\t", " \t", "  \t", "   \t"):
+            for eol in ("\n", "\r\n"):
+                for prefix in ("", "Ordinary paragraph " + anchor("prefix") + eol):
+                    with self.subTest(pad=pad, eol=eol, prefix=bool(prefix)):
+                        target = prefix + eol.join((
+                            pad + "| Header |",
+                            "|---|",
+                            "| " + BEFORE + " | " + AFTER + " |",
+                            "",
+                            "Example \x60" + GHOST + "\x60.",
+                            "",
+                        ))
+                        expected = {"before", "after"} | ({"prefix"} if prefix else set())
+                        self.assertEqual(markdown_fragment_targets(target), expected)
+                        self.assertEqual(findings({
+                            "reference.md": ("[before](target.md#before)\n"
+                                             "[ghost](target.md#ghost)\n"
+                                             "[after](target.md#after)\n"
+                                             + ("[prefix](target.md#prefix)\n" if prefix else "")),
+                            "target.md": target,
+                        }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_valid_table_indentation_preserves_one_column_and_cell_padding(self):
+        for header in ("Header", "| Header |"):
+            for header_indent in range(4):
+                for delimiter_indent in range(4):
+                    for eol in ("\n", "\r\n"):
+                        with self.subTest(header=header, header_indent=header_indent,
+                                          delimiter_indent=delimiter_indent, eol=eol):
+                            target = eol.join((
+                                " " * header_indent + header,
+                                " " * delimiter_indent + "|\t---\t|",
+                                "| " + BEFORE + " | " + GHOST + " |",
+                                "| " + AFTER + " |",
+                                "",
+                            ))
+                            self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                            self.assertEqual(findings({
+                                "reference.md": ("[before](target.md#before)\n"
+                                                 "[ghost](target.md#ghost)\n"
+                                                 "[after](target.md#after)\n"),
+                                "target.md": target,
+                            }, located=True), [missing("reference.md", "target.md", "ghost", 2)])
+
+    def test_indented_continuation_is_not_a_new_paragraph(self):
+        for pad in ("    ", "\t", " \t"):
+            with self.subTest(pad=pad):
+                target = ("Ordinary paragraph " + BEFORE + "\n"
+                          + pad + "continued " + AFTER + "\n"
+                          + "Example \x60" + GHOST + "\x60.\n\n"
+                          + pad + anchor("indented-code") + "\n")
+                self.assertEqual(markdown_fragment_targets(target), {"before", "after"})
+                self.assertEqual(findings({
+                    "reference.md": ("[before](target.md#before)\n"
+                                     "[ghost](target.md#ghost)\n"
+                                     "[after](target.md#after)\n"
+                                     "[indented code](target.md#indented-code)\n"),
+                    "target.md": target,
+                }, located=True), [missing("reference.md", "target.md", "ghost", 2),
+                                   missing("reference.md", "target.md", "indented-code", 4)])
+
+    def test_default_scan_and_legacy_filter_diagnostics_are_preserved(self):
+        files = {
+            "archive/table.md": "# Heading\n\n" + anchor("Exact") + " " + anchor("Exact") + "\n",
+            "docs/guide.md": ("[heading](../archive/table.md#heading)\n"
+                              "[explicit](../archive/table.md#Exact)\n"
+                              "[case](../archive/table.md#exact)\n"
+                              "[suffix](../archive/table.md#Exact-1)\n"
+                              "[missing](../archive/table.md#missing)\n"
+                              "[same](#local)\n\n" + anchor("local") + "\n"),
+            ".generated/skills/example/SKILL.md": "[excluded](../../../archive/table.md#bad)\n",
+            "ignored/source.md": "[excluded](../archive/table.md#bad)\n",
+        }
+        expected = [missing("docs/guide.md", "archive/table.md", token, line)
+                    for line, token in ((3, "exact"), (4, "Exact-1"), (5, "missing"))]
+        self.assertEqual(findings(files, located=True, excluded=Path("ignored")), expected)
+        self.assertEqual(findings(files, excluded=Path("ignored")), [
+            missing("docs/guide.md", "archive/table.md", token)
+            for token in ("exact", "Exact-1", "missing")])
+        self.assertEqual(findings(files, target_pattern=r"(?:agent|templates)/.+\.md|docs/[^/]+\.md"), [])
+
+
+if __name__ == "__main__":
+    unittest.main()
