@@ -23,6 +23,10 @@ from types import MappingProxyType, ModuleType
 from typing import Callable, Mapping
 
 from .ids import ID_PRESETS, ID_SOURCES, IdPolicy, LocatedError, SourceLocation
+from .skills import (
+    SkillConfig, _checkout_relative_path, _legacy_path, _single_name,
+    _validate_generated_header,
+)
 
 KeyPath = tuple[str | int, ...]
 _NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
@@ -286,6 +290,7 @@ class WorkspaceConfig:
     adapters: AdapterRegistration | None = None
     checks: CheckRegistration | None = None
     views: ViewRegistration | None = None
+    skills: SkillConfig | None = None
 
 
 @dataclass(frozen=True)
@@ -301,6 +306,19 @@ class Workspace:
     source_map: DeclarationSourceMap
     sources: Mapping[str, tuple[str, ...]]
     _module: ModuleType | None = field(default=None, repr=False, compare=False)
+    skill_config: SkillConfig = field(init=False, repr=False)
+
+    def __post_init__(self):
+        # Loaded declarations already contain the resolved value. Preserve the
+        # positional constructor for callers assembling a workspace directly.
+        resolved = self.config.skills
+        if resolved is None:
+            resolved = SkillConfig(
+                self.config.skill_namespace,
+                self.config.paths["agent"].relative_to(self.root),
+                self.config.paths["skills_output"].relative_to(self.root),
+            )
+        object.__setattr__(self, "skill_config", resolved)
 
     @property
     def name(self) -> str:
@@ -361,6 +379,19 @@ def _path_reason(value: str, *, allow_dot: bool) -> str | None:
     if not allow_dot and all(part in {"", "."} for part in value.split("/")):
         return "must name a path below the root"
     return None
+
+
+def _portable_skill_name(value: str, field_name: str) -> str:
+    """TOML-only filename safety; direct SkillConfig callers keep their grammar."""
+    _single_name(value, field_name)
+    # A declaration is portable across checkout hosts, including Windows.
+    # Do not accept a name that aliases a device or loses a trailing character.
+    device = value.split(".", 1)[0].rstrip(" ")
+    if (not value.strip() or value.endswith((".", " "))
+            or re.fullmatch(r"(?:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³])",
+                            device, re.IGNORECASE)):
+        raise ValueError(f"{field_name} must be a nonempty portable filename or prefix")
+    return value
 
 
 def _read_error(source: DeclarationSourceMap, key: KeyPath, path: str,
@@ -661,6 +692,70 @@ class _Validator:
             self.fail(key, "skill source and output roots must not overlap")
         return MappingProxyType(resolved), authored
 
+    def skills(self, raw, namespace: str, paths: Mapping[str, Path]) -> SkillConfig:
+        key = ("skills",)
+        names = ("lock_name_override", "lock_stage_prefix_override",
+                 "probe_stage_prefix_override", "build_stage_prefix_override")
+        self.table(raw, key, {*names, "generated_header", "legacy_owned_dirs",
+                              "legacy_retire_names", "path_based_link_ownership"})
+        values = {}
+
+        def checked(location, validate, *args):
+            try:
+                return validate(*args)
+            except ValueError as exc:
+                raise self.source.error(location, str(exc)) from exc
+
+        if "generated_header" in raw:
+            location = key + ("generated_header",)
+            header = self.string(raw["generated_header"], location, nonempty=False)
+            checked(location, _validate_generated_header, header)
+            values["generated_header"] = header
+        for name in names:
+            if name in raw:
+                location = key + (name,)
+                value = self.string(raw[name], location, nonempty=False)
+                values[name] = checked(location, _portable_skill_name, value, name)
+
+        for name in ("legacy_owned_dirs", "legacy_retire_names"):
+            if name not in raw:
+                continue
+            location = key + (name,)
+            entries = self.strings(raw[name], location)
+            normalized = []
+            for index, value in enumerate(entries):
+                item = location + (index,)
+                if name == "legacy_owned_dirs":
+                    path = checked(item, _legacy_path, value)
+                    # Keep legacy ownership roots lexical. In particular,
+                    # resolving a symlink here could grant foreign ownership.
+                    for part in value.split("/"):
+                        checked(item, _portable_skill_name, part, name)
+                    normalized.append(path)
+                else:
+                    normalized.append(checked(item, _portable_skill_name, value, name))
+            values[name] = tuple(normalized)
+        if "path_based_link_ownership" in raw:
+            name = "path_based_link_ownership"
+            values[name] = self.boolean(raw[name], key + (name,))
+
+        source_root = checked(("paths", "agent"), _checkout_relative_path,
+                              paths["agent"].relative_to(self.root), "source_root")
+        output = checked(("paths", "skills_output"), _checkout_relative_path,
+                          paths["skills_output"].relative_to(self.root), "output")
+        config = SkillConfig(namespace, source_root, output, **values)
+        if config.lock_name_override is not None:
+            lock = paths["skills_output"].parent / config.lock_name
+            # Do not create/open anything here or follow an existing lock
+            # symlink. The builder independently validates lock identity.
+            protected = (paths["agent"], paths["skills_output"],
+                         self.root / "otto.toml", (self.root / "otto.toml").resolve())
+            if any(path.is_relative_to(lock) or lock.is_relative_to(path)
+                   for path in protected):
+                self.fail(key + ("lock_name_override",),
+                          "skills.lock_name_override conflicts with a skill root or otto.toml")
+        return config
+
     def discover(self, kinds, authored) -> Mapping[str, tuple[str, ...]]:
         sources = {}
         for i, kind in enumerate(kinds):
@@ -680,10 +775,11 @@ class _Validator:
             sources[kind.name] = tuple(sorted(matches))
         return MappingProxyType(sources)
 
-    def validate(self, *, validate_registrations=True) -> Workspace:
+    def declaration(self):
+        """Resolve the declaration without discovery or executing adapters."""
         data = self.table(self.data, (), {
             "version", "otto", "workspace", "paths", "ids", "record_kinds",
-            "relation_kinds", "adapters", "checks", "views"}, ("version", "workspace"))
+            "relation_kinds", "adapters", "checks", "views", "skills"}, ("version", "workspace"))
         if type(data["version"]) is not int:
             self.fail(("version",), "version must be an integer")
         if data["version"] != 1:
@@ -705,9 +801,15 @@ class _Validator:
         paths, authored = self.paths(data.get("paths", {}), kinds)
         relations = self.relations(data.get("relation_kinds", []))
         adapters, adapter_path, checks, views = self.registrations(kinds)
-        sources = self.discover(kinds, authored)
+        skills = self.skills(data.get("skills", {}), namespace, paths)
         config = WorkspaceConfig(name, namespace, paths, ids, kinds, relations,
-                                 pin, adapters, checks, views)
+                                 pin, adapters, checks, views, skills)
+        return config, authored, adapter_path
+
+    def validate(self, *, validate_registrations=True) -> Workspace:
+        config, authored, adapter_path = self.declaration()
+        sources = self.discover(config.record_kinds, authored)
+        adapters, checks, views = config.adapters, config.checks, config.views
         module = (_load_adapter(self.root, adapter_path, adapters.module, self.source)
                   if adapters else None)
         result = Workspace(self.root, config, self.source, sources, module)
@@ -813,8 +915,7 @@ def _load_adapter(root: Path, path: Path, declared: str,
     return module
 
 
-def load_workspace(root: Path | str, *, validate_registrations=True) -> Workspace:
-    """Select exactly this root; validate the declaration and its contained inputs."""
+def _read_validator(root: Path | str) -> _Validator:
     root = Path(root)
     try:
         if not root.is_dir():
@@ -834,4 +935,21 @@ def load_workspace(root: Path | str, *, validate_registrations=True) -> Workspac
     preliminary = DeclarationSourceMap("otto.toml", MappingProxyType({(): 1}))
     _inside(root, path, source=preliminary, key=(), label="otto.toml")
     data, source = read_declaration(path, display_path="otto.toml")
-    return _Validator(root, data, source).validate(validate_registrations=validate_registrations)
+    return _Validator(root, data, source)
+
+
+def load_skill_config(root: Path | str) -> SkillConfig:
+    """Resolve skill settings without discovering records or importing adapters.
+
+    Consumer modules may call this during adapter import. It uses the same
+    declaration and path validation as load_workspace, but never executes
+    a workspace module or its registration factories.
+    """
+    config, _, _ = _read_validator(root).declaration()
+    assert config.skills is not None
+    return config.skills
+
+
+def load_workspace(root: Path | str, *, validate_registrations=True) -> Workspace:
+    """Select exactly this root; validate the declaration and its contained inputs."""
+    return _read_validator(root).validate(validate_registrations=validate_registrations)
