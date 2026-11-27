@@ -67,14 +67,16 @@ def table(ids=ROW_IDS):
             + "".join(f"| Example {anchor(token)} text | ready |\n" for token in ids))
 
 
-def findings(files, **kwargs):
+def findings(files, *, excluded=None, **kwargs):
     with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
+        root = Path(directory).resolve()
         for name, body in files.items():
             path = root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(body, encoding="utf-8")
-        return checks._link_anchors(checks.Context(root), **kwargs)
+        return checks._link_anchors(
+            checks.Context(root), excluded=root / excluded if excluded is not None else None,
+            **kwargs)
 
 
 def missing(source, target, token, line=None):
