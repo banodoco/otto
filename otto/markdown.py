@@ -87,6 +87,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
 
     def blank(line):
         return not line.strip(" \t")
+
     # A reference label may span physical lines, but never an inline
     # block boundary. Escaped brackets are label content; unescaped ones
     # delimit it.
@@ -336,7 +337,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
         if at < limit and text[at] == "<":
             at = delimited(at + 1, limit, ">")
         else:
-            while at < limit and not text[at] in " \t\n":
+            while at < limit and text[at] not in " \t\n":
                 at += 1
         end = min(line_end(at), limit)
         while at < limit and text[at] in " \t\n":
@@ -404,7 +405,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                     fence = None
                 i = next_line
                 continue
-            if not line.strip(" \t"):
+            if blank(line):
                 raw_block = False
                 paragraph_open = False
                 after_blank = True
@@ -474,7 +475,8 @@ def markdown_fragment_targets(text: str) -> set[str]:
 
         ch = text[i]
         if not raw_stack and not raw_block:
-            if not ch in " \t\n" and not text.startswith(("<!--", "<?", "<!"), i):
+            if (ch not in " \t\n" and not text.startswith(("<!--", "<?", "<![CDATA["), i)
+                    and not declaration_start(i)):
                 paragraph_open = True
             if ch == "\\" and i + 1 < limit and text[i + 1] in punctuation:
                 i += 2
