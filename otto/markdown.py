@@ -81,7 +81,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
     heading_line = re.compile(r" {0,3}#{1,6}(?:[ \t]|$)")
     rule_line = re.compile(r" {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|=+[ \t]*|-+[ \t]*)$")
     definition = re.compile(r" {0,3}\[(?:\\.|[^\\\]\n])+\]:[ \t]*")
-    tag_start = re.compile(r"</?([a-z][a-z0-9-]*)(?=[ \t\n/>])", re.ASCII | re.I)
+    tag_start = re.compile(r"</?([a-z][a-z0-9-]*)(?=[ \t\n/>]|$)", re.ASCII | re.I)
     tag = re.compile(r"""</?([a-z][a-z0-9-]*)(?=[ \t\n/>])(?:[^<>"']|"[^"]*"|'[^']*')*>""",
                      re.ASCII | re.I)
     raw_names = {"script", "style", "textarea"}
@@ -396,7 +396,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                         if name in raw_stack:
                             while raw_stack.pop() != name:
                                 pass
-                    elif name not in void_names:
+                    elif name not in void_names and not (name == "a" and token[0].endswith("/>")):
                         raw_stack.append(name)
                     i = token.end()
                     continue
