@@ -37,6 +37,7 @@ The examples under `tests/fixtures/dev/` and `tests/fixtures/marketing/` are **T
 | `otto` | Optional table with `commit` and optional `tag` | Consumer pin metadata; Dev and Marketing pin a real tag and its commit at OT-23 |
 | `workspace` | Required table with `name` and `skill_namespace` | Human workspace name and generated skill identity |
 | `paths` | Optional string map | Reserved paths below, plus roots named by a record kind |
+| `skills` | Optional closed table | Opt-in skill packaging compatibility settings; absent means the strict defaults |
 | `ids` | Required once any kind is declared; one table per kind | Stable identity validation and path-component extraction |
 | `record_kinds` | Array of tables, default `[]` | Known kinds and their authored sources |
 | `relation_kinds` | Array of tables, default `[]` | Directed endpoint, role and degree rules |
@@ -46,7 +47,7 @@ The examples under `tests/fixtures/dev/` and `tests/fixtures/marketing/` are **T
 
 `otto.commit` is exactly 40 lowercase hex characters. `tag`, if present, is a nonempty tag string and requires `commit`. Pin metadata records identity; it does not fetch, install, or prove the tag's referent. The orchestrator verifies tag-to-commit equality against the requirement pin at OT-23. The example commit is the real starting skeleton, not a claim that it implements this contract. No invented release tag is supplied.
 
-`workspace.name` is a nonempty single-line string. `skill_namespace` matches `[a-z0-9]+(?:-[a-z0-9]+)*-` and includes the trailing hyphen. Complete generated package names retain the 64-character limit. Dev uses `astrid-dev-`; the synthetic consumer uses `demo-marketing-`. Namespace and source root map to OT-6's `SkillConfig`. Marker, lock and staging names are derived from that configuration, not individually configurable TOML features.
+`workspace.name` is a nonempty single-line string. `skill_namespace` matches `[a-z0-9]+(?:-[a-z0-9]+)*-` and includes the trailing hyphen. Complete generated package names retain the 64-character limit. Dev uses `astrid-dev-`; the synthetic consumer uses `demo-marketing-`. Namespace and source root map to OT-6's `SkillConfig`. Marker, lock and staging names are derived from that configuration by default. The optional `[skills]` table exposes only the existing eight keyword-only compatibility settings; the ownership marker, lock content and install-stage prefix are always namespace-derived.
 
 Reserved `paths` keys are:
 
@@ -59,6 +60,28 @@ Reserved `paths` keys are:
 | `pack_templates` | Otto's package `templates/project/` resources | Common `plan.md`, `inputs.md`, `tasks.md` shapes |
 
 Every other path key must be referenced by at least one `record_kinds.root`; this permits `projects`, `vision`, `gaps`, `releases`, `strategy`, `campaigns`, `issues` and `ideas` without accepting arbitrary unused misspellings. A record root key must be explicitly present. Empty roots are valid. Explicit `pack_templates` must exist and supply all three common files when a pack is checked; a typo does not fall back to package defaults. Source and generated-output roots must not overlap. Defaults create no directories on read.
+
+### Optional skill packaging compatibility
+
+The eight keys in the closed `[skills]` table are optional. Omit the table or any individual key to retain that setting's existing default. The following synthetic example opts in to all eight:
+
+```toml
+[skills]
+generated_header = "<!-- Built from {source}; edit the source. -->"
+lock_name_override = ".shared.lock"
+lock_stage_prefix_override = ".shared-lock-"
+probe_stage_prefix_override = ".shared-probe-"
+build_stage_prefix_override = ".shared-build-"
+legacy_owned_dirs = ["archive/skills"]
+legacy_retire_names = ["old-start", "common"]
+path_based_link_ownership = true
+```
+
+The header and the four filename/prefix overrides are strings (omitted: no header or override). The header is one printable line containing exactly one literal `{source}` placeholder and no other braces. The two legacy lists are arrays of strings (omitted: empty); legacy directories are nonempty checkout-relative lexical paths below the root, not resolved aliases. The path-mode flag is a boolean (omitted: false), and only an explicit true opts in to the existing path-based ownership rule. The presence of a legacy list alone never enables it.
+
+Invalid types, unknown keys and malformed values fail at their declaration line (or array-item line). Declared filenames and path components must be portable: no separators within a filename, controls, Windows device names, forbidden filename characters, empty or dot components, parent traversal, absolute paths, or trailing dots/spaces. A declared lock override may not collide with a skill source/output root, an ancestor or descendant of either, or the workspace declaration. No lock or generated directory is created while reading the declaration. These TOML-boundary guards do not change the Python `SkillConfig` constructor's existing grammar. Legacy roots are not resolved into new ownership: a symlink outside the checkout cannot grant custody of its target. Builder and installer ownership, lock and publication rules remain unchanged. Configuration never selects an installation destination or authorizes installation.
+
+`load_workspace(root)` resolves one frozen `SkillConfig`, using the namespace and checkout-relative paths from the existing declarations plus these optional settings. `workspace.skill_config` and `otto.checks.skill_config(workspace)` expose that same object. All generic skill commands and `skill-packages-current` use it. A consumer adapter that needs the settings before workspace loading finishes can call `otto.config.load_skill_config(root)`: it shares TOML and path validation but does not discover records, execute an adapter module or call a registry factory. Separate loads of the same unchanged declaration return equal immutable values, not a process-global cache. Normal workspace loading still performs its usual discovery and adapter loading; `validate_registrations=False` does not suppress adapter module execution.
 
 ### Identity policies and bidirectional resolution
 
@@ -398,7 +421,7 @@ The split is carried by opt-in `SkillConfig` settings (P95-06b), all keyword-onl
 | `lock_name_override`, `lock_stage_prefix_override`, `probe_stage_prefix_override`, `build_stage_prefix_override` | Replace the namespace-derived lock file name and the three scratch prefixes. Lock content and the install stage prefix are unchanged |
 | `legacy_owned_dirs`, `legacy_retire_names`, `path_based_link_ownership` | With path-based ownership on, a symlink is owned when its resolved target lies under the output directory or a listed legacy directory, with no namespace or marker rule; the named legacy names join the namespace-prefixed names as retirement candidates. The root is resolved by the installer; legacy directories are not resolved, so a symlinked legacy directory cannot grant ownership outside the checkout. Everything else in the installer (the all-destination preflight, publication before retirement, dry run, partial-failure reporting) is the one code path |
 
-The Dev workspace supplies its values from its own wrapper; no Dev wording is in Otto.
+A consumer can now declare its own compatibility settings once in `[skills]` and use `load_skill_config(root)` in its wrapper. The wrapper migration is separate from Otto; Otto contains no consumer-specific wording or migration values.
 
 No namespace can retire the other's packages. A matching prefix alone does not prove ownership. No Otto installer special-case names Dev's old packages. Real installation still needs its existing authorization; OT-4 config selects no destinations and runs no installation. Guidance content/role-rule moves are OT-15 through OT-21's map, not implicitly moved by this code map.
 
