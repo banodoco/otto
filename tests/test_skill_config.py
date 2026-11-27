@@ -96,8 +96,12 @@ class WorkspaceSkillConfigTests(unittest.TestCase):
 
     def refuse(self, declaration, needle, message):
         self.declare(declaration)
-        line = next(i for i, text in enumerate(declaration.splitlines(), 1)
-                    if needle in text)
+        # Match the start of the declaration or array item, not a substring
+        # of another key (e.g. namespace within skill_namespace).
+        lines = [i for i, text in enumerate(declaration.splitlines(), 1)
+                 if text.lstrip().startswith(needle.lstrip())]
+        self.assertEqual(len(lines), 1, f"ambiguous or missing fixture line: {needle!r}")
+        line = lines[0]
         for load in (load_workspace, load_skill_config):
             with self.subTest(loader=load.__name__):
                 with self.assertRaises(LocatedError) as caught:
