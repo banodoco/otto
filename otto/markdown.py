@@ -115,6 +115,17 @@ def markdown_fragment_targets(text: str) -> set[str]:
             return hit[1]
         return None
 
+    def container_interrupt(line):
+        # A blockquote, or a nonempty list starting at 1 (ordered) or
+        # with a bullet, can interrupt an existing paragraph. Other list
+        # markers are only block starts when there is no open paragraph.
+        marker = container.match(line)
+        if not marker:
+            return False
+        if marker[1] == ">":
+            return True
+        return bool(re.match(r" {0,3}(?:[-+*]|0{0,8}1[.)])[ \t]+(?=\S)", line))
+
     # Inline code/link spans cannot cross a paragraph/block boundary. Table
     # cells are separate inline contexts as well. Index boundaries and runs
     # once, rather than repeatedly looking ahead through the document.
@@ -127,7 +138,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
         starts.append(offset)
         by_start[offset] = line
         end = offset + len(line)
-        if (not line.strip() or opener(line) or container.match(line)
+        if (not line.strip() or opener(line) or container_interrupt(line)
                 or rule_line.fullmatch(line) or html_interrupt(line)):
             cuts.add(offset)
         if heading_line.match(line):
@@ -146,47 +157,76 @@ def markdown_fragment_targets(text: str) -> set[str]:
             spans.pop()
         return spans
 
-    # Index candidate table shapes independently of the preceding line.
-    # The live scanner activates cell boundaries only at a block start.
-    # In an uncertain paragraph, withhold ids from possible surplus cells
-    # without using those cells to split ordinary inline code or link spans.
-    discarded = []
+    def table_boundary(line):
+        return (not line.strip() or container_interrupt(line) or opener(line)
+                or heading_line.match(line) or rule_line.fullmatch(line)
+                or html_interrupt(line) or line.startswith(("    ", "\t")))
+
+    # Index matching header/separator pairs without assuming the preceding
+    # physical line was a paragraph. Candidates inside hidden examples must
+    # not shadow a later real table. Confirm cell boundaries in the live
+    # scanner only when it reaches a candidate at a block start.
     table_candidates = {}
-    table_end = 0
     for n in range(1, len(lines)):
-        if n - 1 < table_end:
-            continue
-        header = lines[n - 1]
-        separator = lines[n]
+        header, separator = lines[n - 1:n + 1]
         columns = cell_spans(separator)
         width = len(columns)
         if (not pipes(separator) or not width
                 or not all(re.fullmatch(r":?-+:?", separator[a:b].strip()) for a, b in columns)
                 or len(cell_spans(header)) != width
-                or not header.strip() or opener(header) or container.match(header)
-                or heading_line.match(header) or rule_line.fullmatch(header)
-                or html_interrupt(header) or header.startswith(("    ", "\t"))):
+                or table_boundary(header) or container.match(header)):
             continue
-        table_cuts = set()
-        for k in range(n - 1, len(lines)):
+        table_candidates[starts[n - 1]] = width
+
+    def surplus_cells(k, width):
+        spans = cell_spans(lines[k])
+        if len(spans) > width:
+            return (starts[k] + spans[width][0] - 1, starts[k] + len(lines[k]))
+        return None
+
+    # In an uncertain paragraph with table-shaped text, withhold ids in
+    # possible surplus cells without introducing inline code/link cuts.
+    # The minimum candidate width in each uninterrupted run is conservative;
+    # a confirmed live table instead uses its own exact header width.
+    discarded = []
+    possible_width = None
+    for k, line in enumerate(lines):
+        if table_boundary(line):
+            possible_width = None
+        if starts[k] in table_candidates:
+            width = table_candidates[starts[k]]
+            possible_width = width if possible_width is None else min(possible_width, width)
+        if possible_width is not None:
+            excess = surplus_cells(k, possible_width)
+            if excess:
+                discarded.append(excess)
+
+    def table_extent(at, width):
+        header = bisect_left(starts, at)
+        boundaries = set()
+        excesses = []
+        for k in range(header, len(lines)):
             row = lines[k]
-            if k > n and (not row.strip() or container.match(row) or opener(row)
-                          or heading_line.match(row) or rule_line.fullmatch(row)
-                          or html_interrupt(row) or row.startswith(("    ", "\t"))):
-                break
-            table_end = k + 1
+            if k > header + 1 and table_boundary(row):
+                return starts[k], sorted(boundaries), excesses
             start, end = starts[k], starts[k] + len(row)
-            table_cuts.update((start, end))
-            table_cuts.update(start + p for p in pipes(row))
-            spans = cell_spans(row)
-            if len(spans) > width:
-                discarded.append((start + spans[width][0] - 1, end))
-        table_candidates[starts[n - 1]] = (
-            starts[table_end] if table_end < len(lines) else len(text),
-            sorted(table_cuts))
+            boundaries.update((start, end))
+            boundaries.update(start + p for p in pipes(row))
+            excess = surplus_cells(k, width)
+            if excess:
+                excesses.append(excess)
+        return len(text), sorted(boundaries), excesses
+
+    def discarded_at(at, ranges):
+        index = bisect_right(ranges, (at, len(text))) - 1
+        if index >= 0 and at < ranges[index][1]:
+            return ranges[index][1]
+        return None
+
     cuts = sorted(cuts)
     active_table_end = -1
     active_table_cuts = ()
+    active_discarded = ()
     runs = {}
     for hit in re.finditer(r"\x60+", text):
         runs.setdefault(len(hit[0]), []).append(hit.start())
@@ -298,23 +338,18 @@ def markdown_fragment_targets(text: str) -> set[str]:
         return active_fence, bool(inner.strip() and not active_fence
                                   and not heading_line.match(inner)
                                   and not rule_line.fullmatch(inner))
-    discard_index = 0
     paragraph_open = False
     while i < len(text):
         if active_table_end >= 0 and i >= active_table_end:
-            active_table_end, active_table_cuts = -1, ()
+            active_table_end, active_table_cuts, active_discarded = -1, (), ()
             paragraph_open = False
-        while discard_index < len(discarded) and discarded[discard_index][1] <= i:
-            discard_index += 1
-        surplus = False
-        if discard_index < len(discarded):
-            start, end = discarded[discard_index]
-            surplus = start <= i < end
-            if surplus and i < active_table_end:
-                # A confirmed table does not render these cells at all.
-                finish_inline()
-                i = end
-                continue
+        excess_end = discarded_at(i, active_discarded if i < active_table_end else discarded)
+        surplus = excess_end is not None
+        if surplus and i < active_table_end:
+            # A confirmed table does not render these cells at all.
+            finish_inline()
+            i = excess_end
+            continue
         if i in by_start:
             line = by_start[i]
             next_line = i + len(line) + 1
@@ -334,7 +369,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
             if not raw_stack and not raw_block:
                 marker = container.match(line)
                 indent = len(line) - len(line.lstrip(" \t"))
-                if marker:
+                if marker and (not paragraph_open or container_interrupt(line)):
                     paragraph_open = False
                     new_indent = 0 if marker[1] == ">" else marker.end()
                     if after_blank or new_indent != container_indent:
@@ -365,7 +400,7 @@ def markdown_fragment_targets(text: str) -> set[str]:
                     i = next_line
                     continue
                 if not paragraph_open and i in table_candidates:
-                    active_table_end, active_table_cuts = table_candidates[i]
+                    active_table_end, active_table_cuts, active_discarded = table_extent(i, table_candidates[i])
                 limit = inline_end(i)
                 ref = definition.match(text, i, limit)
                 if ref:
